@@ -28,7 +28,7 @@ app.use(
 
 // ====== CORS SETUP ======
 const corsOptions = {
-  origin: 'ovs-frontend-drab.vercel.app', // Your frontend origin
+  origin: 'https://ovs-frontend-drab.vercel.app', // Your frontend origin
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true, // This must match session settings
 };
