@@ -6,7 +6,7 @@ let io;  // Declare the io variable globally to be shared across modules
 const setupSocket = (server) => {
   const socketIO = new Server(server, {
     cors: {
-      origin: 'ovs-frontend-drab.vercel.app',  // Frontend URL
+      origin: 'https://ovs-frontend-drab.vercel.app',  // Frontend URL
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       credentials: true,  // Allow credentials if needed
     },
