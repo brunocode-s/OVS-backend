@@ -6,7 +6,7 @@ import base64url from 'base64url';
 
 const fido2 = new Fido2Lib({
   timeout: 60000,
-  rpId: 'localhost', // Replace with your domain in production
+  rpId: 'ovs-frontend-drab.vercel.app', // Replace with your domain in production
   rpName: 'Online Voting System',
   challengeSize: 64,
   attestation: 'none',
@@ -171,7 +171,7 @@ const verifyFingerprintRegister = async (req, res) => {
 
     const expected = {
       challenge: Buffer.from(user.challenge, 'base64'),
-      origin: 'http://localhost:5001', // your frontend origin
+      origin: 'https://ovs-frontend-drab.vercel.app', // your frontend origin
       factor: 'either',
       rpId: 'localhost'
     };
