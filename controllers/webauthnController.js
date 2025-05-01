@@ -7,9 +7,9 @@ import {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { query } from '../models/db.js';
 
-const ORIGIN = 'http://localhost:5173';
+const ORIGIN = 'https://ovs-frontend-drab.vercel.app';
 
-const getRpID = (req) => req.get('host').split(':')[0];
+const getRpID = () => 'ovs-frontend-drab.vercel.app';
 
 // ======== Registration ========
 
