@@ -41,21 +41,35 @@ const createElection = async (req, res) => {
   }
 };
 
-// Get all elections (Public)
+// Get all elections (Admin only)
 const getElections = async (req, res) => {
   try {
-    const result = await query('SELECT * FROM elections ORDER BY created_at DESC');
+    const { role, id } = req.user; // Extract user data from req.user (populated by auth middleware)
+
+    // Admin users will see only elections they've created
+    let electionQuery = 'SELECT * FROM elections ORDER BY created_at DESC';
+    let queryParams = [];
+
+    // If the user is an admin, only fetch elections where admin_id matches the user's id
+    if (role === 'admin') {
+      electionQuery = 'SELECT * FROM elections WHERE admin_id = $1 ORDER BY created_at DESC';
+      queryParams = [id]; // Filter by the authenticated admin's id
+    }
+
+    // Execute the query
+    const result = await query(electionQuery, queryParams);
     const elections = result.rows;
 
+    // For each election, get the candidates
     for (const election of elections) {
       const candidateResult = await query(
         'SELECT id, name, votes FROM candidates WHERE election_id = $1',
         [election.id]
       );
-      election.candidates = candidateResult.rows;
+      election.candidates = candidateResult.rows; // Attach candidates to election
     }
 
-    res.status(200).json(elections);
+    res.status(200).json(elections); // Return the filtered elections
   } catch (err) {
     console.error('Error fetching elections:', err);
     res.status(500).json({ error: err.message });
