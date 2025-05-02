@@ -13,10 +13,10 @@ export const createElection = async (req, res) => {
 
     // Step 1: Insert the election
     const electionResult = await query(
-      `INSERT INTO elections (title, description, start_date, end_date)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO elections (title, description, start_date, end_date, admin_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [title, description, start_date, end_date]
+      [title, description, start_date, end_date, req.user.id, req.user.id]
     );
 
     const election = electionResult.rows[0];
