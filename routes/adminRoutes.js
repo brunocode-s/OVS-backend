@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
 });
 
 // Actual route your frontend is trying to POST to
-router.post('/create-election', createElection);
+router.post('/create-election', authenticate, createElection);
 router.put('/edit-election/:id', editElection);
 router.delete('/cancel-election/:id', cancelElection);
 
