@@ -5,7 +5,7 @@ import {
   cancelElection, 
   getElectionStats 
 } from '../controllers/adminController.js'; // make sure path is correct
-// import { authenticate } from '../middleware/authMiddleware.js';
+import { authenticate } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
