@@ -3,6 +3,7 @@ import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple'; // PostgreSQL session store
 import authRoutes from './routes/authRoutes.js';
 import electionRoutes from './routes/electionRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
@@ -10,19 +11,27 @@ import voteRoutes from './routes/voteRoutes.js';
 import { getElections, getElectionById } from './controllers/electionController.js';
 import webauthnRoutes from './routes/webauthnRoutes.js';
 import { setupSocket } from './socket.js';  // Import the socket setup
+import { query } from './db.js'; // Import the query function from db.js
 
 dotenv.config();  // Load environment variables
 
 const app = express();
 const server = http.createServer(app);
 
-// ====== SESSION SETUP (put first) ======
+// ====== SESSION SETUP (using PostgreSQL for sessions) ======
+const PgSession = connectPgSimple(session);
+
+// Use the pool from db.js for session store
 app.use(
   session({
+    store: new PgSession({
+      pool: query, // Use the query function from db.js to access the PostgreSQL pool
+      tableName: 'session', // Optional: change table name for sessions
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: true }, // true in production with HTTPS
+    saveUninitialized: false,  // Ensure only initialized sessions are saved
+    cookie: { secure: process.env.NODE_ENV === 'production' }, // secure cookies in production
   })
 );
 
