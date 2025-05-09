@@ -2,11 +2,13 @@ import { hash, compare } from 'bcryptjs';
 import { query } from '../models/db.js';
 import { Fido2Lib } from 'fido2-lib';
 import { generateToken } from '../utils/jwt.js';
+import { sendEmail } from '../utils/email.js';
+import jwt from 'jsonwebtoken';
 import base64url from 'base64url';
 
 const fido2 = new Fido2Lib({
   timeout: 60000,
-  rpId: 'ovs-frontend-drab.vercel.app', // Replace with your domain in production
+  rpId: 'localhost',
   rpName: 'Online Voting System',
   challengeSize: 64,
   attestation: 'none',
@@ -14,6 +16,18 @@ const fido2 = new Fido2Lib({
   authenticatorRequireResidentKey: false,
   authenticatorUserVerification: 'required',
 });
+
+// Helper function to send password reset email
+const sendPasswordResetEmail = async (email, resetLink) => {
+  const subject = 'Password Reset Request';
+  const text = `Click this link to reset your password: ${resetLink}`;
+  const html = `
+    <h2>Reset your password</h2>
+    <p>Click the link below to reset your password:</p>
+    <a href="${resetLink}">${resetLink}</a>
+  `;
+  await sendEmail(email, subject, text, html);
+};
 
 const register = async (req, res) => {
   const { firstName, lastName, email, password, role, fingerprintId } = req.body;
@@ -76,12 +90,57 @@ const login = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await query('SELECT * FROM users WHERE email = $1', [email]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const resetToken = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+
+    await sendPasswordResetEmail(email, resetLink);
+
+    res.status(200).json({ message: 'Password reset email sent' });
+  } catch (err) {
+    console.error('Error in forgot password:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { password } = req.body;
+  const token = req.params.token;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const hashedPassword = await hash(password, 10);
+    const result = await query('UPDATE users SET password = $1 WHERE email = $2', [
+      hashedPassword,
+      decoded.email
+    ]);
+
+    if (result.rowCount > 0) {
+      res.status(200).json({ message: 'Password has been successfully reset' });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (err) {
+    console.error('Error in reset password:', err);
+    res.status(400).json({ message: 'Invalid or expired token' });
+  }
+};
+
+
 const hasFingerprint = async (req, res) => {
   try {
     const userId = req.user.id;
 
     const result = await query('SELECT fingerprint_id FROM users WHERE id = $1', [userId]);
-
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -95,7 +154,6 @@ const hasFingerprint = async (req, res) => {
   }
 };
 
-// WebAuthn register start
 const startFingerprintRegister = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -106,19 +164,18 @@ const startFingerprintRegister = async (req, res) => {
     }
 
     const user = result.rows[0];
-
     await query('UPDATE users SET challenge = NULL WHERE id = $1', [userId]);
 
     const registrationOptions = await fido2.attestationOptions({
       user: {
-        id: Buffer.from(userId.toString()), // Required to be a Buffer
+        id: Buffer.from(userId.toString()),
         name: `${user.firstname} ${user.lastname}`,
         displayName: `${user.firstname} ${user.lastname}`,
       },
       timeout: 60000,
       rp: {
         name: 'Online Voting System',
-        id: 'ovs-frontend-drab.vercel.app'
+        id: 'localhost'
       },
       pubKeyCredParams: [
         { type: 'public-key', alg: -7 },
@@ -130,8 +187,7 @@ const startFingerprintRegister = async (req, res) => {
       },
       attestation: 'none'
     });
-    
-    // 🔁 Encode binary fields before sending to frontend
+
     const formattedOptions = {
       ...registrationOptions,
       challenge: base64url.encode(registrationOptions.challenge),
@@ -141,7 +197,6 @@ const startFingerprintRegister = async (req, res) => {
       }
     };
 
-    // Store challenge in DB
     await query('UPDATE users SET challenge = $1 WHERE id = $2', [
       registrationOptions.challenge.toString('base64'),
       userId
@@ -154,10 +209,8 @@ const startFingerprintRegister = async (req, res) => {
   }
 };
 
-// WebAuthn register verify
 const verifyFingerprintRegister = async (req, res) => {
   const { id, rawId, response, type } = req.body;
-  console.log('Received WebAuthn response:', req.body);
 
   try {
     const userId = req.user.id;
@@ -168,12 +221,11 @@ const verifyFingerprintRegister = async (req, res) => {
     }
 
     const user = result.rows[0];
-
     const expected = {
       challenge: Buffer.from(user.challenge, 'base64'),
-      origin: 'https://ovs-frontend-drab.vercel.app', // your frontend origin
+      origin: 'https://ovs-frontend-drab.vercel.app',
       factor: 'either',
-      rpId: 'ovs-frontend-drab.vercel.app'
+      rpId: 'localhost'
     };
 
     const attestationResult = await fido2.attestationResult(
@@ -188,7 +240,7 @@ const verifyFingerprintRegister = async (req, res) => {
       res.status(400).json({ message: 'Fingerprint verification failed' });
     }
   } catch (err) {
-    console.error('Error during fingerprint registration verification:', err);
+    console.error('Error during fingerprint verification:', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -215,7 +267,6 @@ const startFingerprintLogin = async (req, res) => {
       }
     ];
 
-    // Save challenge to DB
     await query('UPDATE users SET challenge = $1 WHERE id = $2', [
       Buffer.from(options.challenge, 'base64').toString('base64'),
       user.id
@@ -231,6 +282,8 @@ const startFingerprintLogin = async (req, res) => {
 export {
   register,
   login,
+  forgotPassword,
+  resetPassword,
   hasFingerprint,
   startFingerprintRegister,
   verifyFingerprintRegister,
