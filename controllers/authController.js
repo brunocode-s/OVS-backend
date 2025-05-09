@@ -147,7 +147,7 @@ const startFingerprintRegister = async (req, res) => {
       userId
     ]);
 
-    res.json(registrationOptions);
+    res.json(formattedOptions);
   } catch (err) {
     console.error('Error during fingerprint register start:', err);
     res.status(500).json({ message: err.message });
