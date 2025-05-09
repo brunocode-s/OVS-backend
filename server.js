@@ -22,7 +22,7 @@ app.use(
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }, // true in production with HTTPS
+    cookie: { secure: true }, // true in production with HTTPS
   })
 );
 
