@@ -11,7 +11,7 @@ import voteRoutes from './routes/voteRoutes.js';
 import { getElections, getElectionById } from './controllers/electionController.js';
 import webauthnRoutes from './routes/webauthnRoutes.js';
 import { setupSocket } from './socket.js';  // Import the socket setup
-import { query } from './db.js'; // Import the query function from db.js
+import { query } from './models/db.js'; // Import the query function from db.js
 
 dotenv.config();  // Load environment variables
 
