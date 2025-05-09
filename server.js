@@ -11,7 +11,7 @@ import voteRoutes from './routes/voteRoutes.js';
 import { getElections, getElectionById } from './controllers/electionController.js';
 import webauthnRoutes from './routes/webauthnRoutes.js';
 import { setupSocket } from './socket.js';  // Import the socket setup
-import { query } from './models/db.js'; // Import the query function from db.js
+import { pool } from './models/db.js'; // Import the query function from db.js
 
 dotenv.config();  // Load environment variables
 
@@ -25,7 +25,7 @@ const PgSession = connectPgSimple(session);
 app.use(
   session({
     store: new PgSession({
-      pool: query, // Use the query function from db.js to access the PostgreSQL pool
+      pool, // Use the query function from db.js to access the PostgreSQL pool
       tableName: 'session', // Optional: change table name for sessions
     }),
     secret: process.env.SESSION_SECRET,
