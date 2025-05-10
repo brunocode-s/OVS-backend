@@ -31,7 +31,10 @@ app.use(
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,  // Ensure only initialized sessions are saved
-    cookie: { secure: process.env.NODE_ENV === 'production' }, // secure cookies in production
+    cookie: { 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none', 
+    }, // secure cookies in production
   })
 );
 
