@@ -18,14 +18,40 @@ const fido2 = new Fido2Lib({
 });
 
 // Helper function to send password reset email
-const sendPasswordResetEmail = async (email, resetLink) => {
-  const subject = 'Password Reset Request';
-  const text = `Click this link to reset your password: ${resetLink}`;
+const sendPasswordResetEmail = async (email, firstName, resetLink) => {
+  const appName = 'Online Voting System';
+  const logoUrl = 'https://yourdomain.com/logo.png'; // Replace with your logo URL
+  const subject = `${appName} - Password Reset Request`;
+  const text = `Hello ${firstName},\n\nYou requested to reset your password on ${appName}. Click this link to reset it: ${resetLink}`;
+
   const html = `
-    <h2>Reset your password</h2>
-    <p>Click the link below to reset your password:</p>
-    <a href="${resetLink}">${resetLink}</a>
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; padding: 20px;">
+      <div style="text-align: center;">
+        <img src="${logoUrl}" alt="${appName} Logo" style="max-width: 150px; margin-bottom: 20px;" />
+      </div>
+      <h2 style="color: #2c3e50;">Reset Your Password</h2>
+      <p>Hi <strong>${firstName}</strong>,</p>
+      <p>You requested to reset your password on <strong>${appName}</strong>. Click the button below to proceed:</p>
+      <p style="text-align: center;">
+        <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #3498db; color: #fff; text-decoration: none; border-radius: 5px;">
+          Reset Password
+        </a>
+      </p>
+      <p>If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="word-break: break-word; color: #555;">${resetLink}</p>
+      <hr style="margin: 30px 0;" />
+      <footer style="font-size: 12px; color: #999; text-align: center;">
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        <p>— The ${appName} Team</p>
+        <div style="margin-top: 10px;">
+          <a href="https://twitter.com/yourapp" style="margin: 0 5px; text-decoration: none; color: #3498db;">Twitter</a> |
+          <a href="https://facebook.com/yourapp" style="margin: 0 5px; text-decoration: none; color: #3498db;">Facebook</a> |
+          <a href="https://yourapp.com" style="margin: 0 5px; text-decoration: none; color: #3498db;">Website</a>
+        </div>
+      </footer>
+    </div>
   `;
+
   await sendEmail(email, subject, text, html);
 };
 
@@ -102,7 +128,7 @@ const forgotPassword = async (req, res) => {
     const resetToken = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
     const resetLink = `https://ovs-frontend-drab.vercel.app/reset-password/${resetToken}`;
 
-    await sendPasswordResetEmail(email, resetLink);
+    await sendPasswordResetEmail(email, user.firstName, resetLink);
 
     res.status(200).json({ message: 'Password reset email sent' });
   } catch (err) {
