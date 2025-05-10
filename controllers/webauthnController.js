@@ -47,6 +47,8 @@ export const getRegistrationOptions = async (req, res) => {
     req.session.challengeExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
     req.session.rpID = rpID;
 
+    await req.session.save();
+
     console.log('Generated registration options:', options);
     res.json(options);
   } catch (err) {
