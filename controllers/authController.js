@@ -175,7 +175,7 @@ const startFingerprintRegister = async (req, res) => {
       timeout: 60000,
       rp: {
         name: 'Online Voting System',
-        id: 'localhost'
+        id: 'ovs-frontend-drab.vercel.app'
       },
       pubKeyCredParams: [
         { type: 'public-key', alg: -7 },
@@ -225,7 +225,7 @@ const verifyFingerprintRegister = async (req, res) => {
       challenge: Buffer.from(user.challenge, 'base64'),
       origin: 'https://ovs-frontend-drab.vercel.app',
       factor: 'either',
-      rpId: 'localhost'
+      rpId: 'ovs-frontend-drab.vercel.app'
     };
 
     const attestationResult = await fido2.attestationResult(
