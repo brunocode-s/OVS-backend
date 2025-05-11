@@ -8,7 +8,7 @@ import base64url from 'base64url';
 
 const fido2 = new Fido2Lib({
   timeout: 60000,
-  rpId: 'localhost',
+  rpId: 'ovs-frontend-drab.vercel.app',
   rpName: 'Online Voting System',
   challengeSize: 64,
   attestation: 'none',
