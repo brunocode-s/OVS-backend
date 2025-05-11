@@ -21,6 +21,8 @@ const server = http.createServer(app);
 // ====== SESSION SETUP (using PostgreSQL for sessions) ======
 const PgSession = connectPgSimple(session);
 
+app.set('trust proxy', 1); // Trust first proxy 
+
 // Use the pool from db.js for session store
 app.use(
   session({
@@ -33,7 +35,8 @@ app.use(
     saveUninitialized: false,  // Ensure only initialized sessions are saved
     cookie: { 
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none', 
+      sameSite: 'none',
+      httpOnly: true, 
     }, // secure cookies in production
   })
 );
