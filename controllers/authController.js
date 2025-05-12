@@ -288,13 +288,13 @@ const startFingerprintLogin = async (req, res) => {
     options.allowCredentials = [
       {
         type: 'public-key',
-        id: user.fingerprint_id,
+        id: Buffer.from(user.fingerprint_id, 'base64'), // Convert to Buffer
         transports: ['internal'],
       }
     ];
 
     await query('UPDATE users SET challenge = $1 WHERE id = $2', [
-      Buffer.from(options.challenge, 'base64').toString('base64'),
+      options.challenge, // Already base64url encoded
       user.id
     ]);
 
