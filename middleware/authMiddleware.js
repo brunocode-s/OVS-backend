@@ -4,10 +4,12 @@ import { query } from '../models/db.js';
 
 export const authenticate = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
+  console.log('Token received:', token);
   if (!token) return res.status(401).json({ message: 'Session expired. Please login again' });
 
   try {
     const decoded = verify(token, process.env.JWT_SECRET);
+    console.log('Decoded token:', decoded);
 
     // Get user from DB using the query function
     const result = await query(
@@ -26,19 +28,30 @@ export const authenticate = async (req, res, next) => {
       role: user.role,
     };
 
+    console.log('Authenticated User:', req.user);
+
     next();
   } catch (err) {
     console.error('Authentication error:', err);
-    res.status(403).json({ message: 'Invalid or expired token' });
+  
+    // JWT expired → 401
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Session expired. Please login again' });
+    }
+  
+    // Invalid JWT or other error → 401
+    return res.status(401).json({ message: 'Invalid token. Please log in again.' });
   }
 };
 
 export const authenticateJWT = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
+  console.log('Token received:', token);
   if (!token) return res.status(401).json({ message: 'No token provided' });
 
   try {
     const decoded = verify(token, process.env.JWT_SECRET);
+    console.log('Decoded token:', decoded);
 
     // Get user from DB using the query function
     const result = await query(
@@ -57,9 +70,18 @@ export const authenticateJWT = async (req, res, next) => {
       role: user.role,
     };
 
+    console.log('Authenticated User:', req.user);
+
     next();
   } catch (err) {
     console.error('Authentication error:', err);
-    res.status(403).json({ message: 'Invalid or expired token' });
+  
+    // JWT expired → 401
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Session expired. Please login again' });
+    }
+  
+    // Invalid JWT or other error → 401
+    return res.status(401).json({ message: 'Invalid token. Please log in again.' });
   }
 };

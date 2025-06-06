@@ -12,6 +12,7 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:token', resetPassword);        
 router.post('/start-fingerprint-register', authenticateJWT, startFingerprintRegister); // Start fingerprint registration
 router.post('/start-fingerprint-login', startFingerprintLogin); // Start fingerprint login 
+router.post('/verify-fingerprint-register', verifyFingerprintRegister); // Verify fingerprint registration
 router.get('/has-fingerprint', authenticateJWT, hasFingerprint); // Check if user has fingerprint registered
 
 export default router;
