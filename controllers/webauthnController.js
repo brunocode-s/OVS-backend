@@ -15,7 +15,7 @@ const getRpID = () => 'ovs-frontend-drab.vercel.app';
 
 export const getRegistrationOptions = async (req, res) => {
   const user = req.user;
-  const rpID = getRpID();
+  const rpID = getRpID(req);
 
   try {
     const authenticators = await query(
@@ -32,7 +32,7 @@ export const getRegistrationOptions = async (req, res) => {
     const options = await generateRegistrationOptions({
       rpName: 'Online Voting System',
       rpID,
-      userID: user.id.toString(),
+      userID: Buffer.from(user.id.toString(), 'utf8'),
       userName: user.email,
       timeout: 60000,
       attestationType: 'none',
