@@ -189,6 +189,14 @@ export const verifyAuthentication = async (req, res) => {
 
     const auth = authRow.rows[0];
 
+    // Add additional logging before verification
+    console.log('Auth object:', {
+      id: auth.id,
+      counter: auth.counter,
+      public_key_type: typeof auth.public_key,
+      public_key_preview: auth.public_key.substring(0, 50) + '...'
+    });
+
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
@@ -196,13 +204,22 @@ export const verifyAuthentication = async (req, res) => {
       expectedRPID: rpID,
       authenticator: {
         credentialID: auth.credential_id,
-        credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
+        // Fix: Convert comma-separated string to Buffer
+        credentialPublicKey: Buffer.from(auth.public_key.split(',').map(Number)),
         counter: auth.counter ?? 0,
       },
     });
 
+    console.log('Verification result:', {
+      verified: verification.verified,
+      hasAuthInfo: !!verification.authenticationInfo,
+      authInfo: verification.authenticationInfo
+    });
+
     if (verification.verified && verification.authenticationInfo) {
       const newCounter = verification.authenticationInfo.newCounter ?? 0;
+
+      console.log('Updating counter from', auth.counter, 'to', newCounter);
 
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
@@ -219,14 +236,22 @@ export const verifyAuthentication = async (req, res) => {
 
       return res.json({ success: true });
     } else {
-      return res.status(400).json({ success: false, reason: 'Not verified' });
+      console.log('Verification failed - not verified or missing auth info');
+      return res.status(400).json({ 
+        success: false, 
+        reason: 'Not verified',
+        details: {
+          verified: verification.verified,
+          hasAuthInfo: !!verification.authenticationInfo
+        }
+      });
     }
   } catch (err) {
     console.error('Authentication verification failed:', err.message);
+    console.error('Full error:', err);
     res.status(500).json({ message: 'Authentication failed', error: err.message });
   }
 };
-
 // ========= CHECK =========
 
 export const checkFingerprintRegistration = async (req, res) => {
