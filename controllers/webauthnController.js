@@ -31,7 +31,7 @@ export const getRegistrationOptions = async (req, res) => {
     const options = await generateRegistrationOptions({
       rpName: 'Online Voting System',
       rpID,
-      userID: user.id.toString(),
+      userID: userIDBuffer,
       userName: user.email,
       timeout: 60000,
       attestationType: 'none',
