@@ -311,19 +311,19 @@ export const verifyAuthentication = async (req, res) => {
         throw new Error(`Failed to decode public key: ${publicKeyError.message}`);
       }
 
-      // CRITICAL FIX: Use the exact property names expected by SimpleWebAuthn
+      // CRITICAL FIX: Convert Buffers to Uint8Array for SimpleWebAuthn compatibility
       authenticatorDevice = {
-        credentialID: credentialIDForDevice,
-        credentialPublicKey: publicKeyBuffer,
+        credentialID: new Uint8Array(credentialIDForDevice),
+        credentialPublicKey: new Uint8Array(publicKeyBuffer),
         counter: counterValue,
         // Optional: only include if you have transport data
         ...(auth.transports && Array.isArray(auth.transports) && { transports: auth.transports })
       };
 
       console.log('✅ Authenticator device created:', {
-        credentialID_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialID),
+        credentialID_isUint8Array: authenticatorDevice.credentialID instanceof Uint8Array,
         credentialID_length: authenticatorDevice.credentialID?.length,
-        credentialPublicKey_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialPublicKey),
+        credentialPublicKey_isUint8Array: authenticatorDevice.credentialPublicKey instanceof Uint8Array,
         credentialPublicKey_length: authenticatorDevice.credentialPublicKey?.length,
         counter: authenticatorDevice.counter,
         counter_type: typeof authenticatorDevice.counter,
@@ -351,24 +351,113 @@ export const verifyAuthentication = async (req, res) => {
       return res.status(500).json({ message: 'Authenticator device missing counter property' });
     }
 
-    console.log('🚀 Final authenticator device before SimpleWebAuthn call:', {
-      isObject: typeof authenticatorDevice === 'object',
-      isNull: authenticatorDevice === null,
-      isUndefined: authenticatorDevice === undefined,
-      keys: Object.keys(authenticatorDevice || {}),
-      counter: authenticatorDevice?.counter,
-      counterType: typeof authenticatorDevice?.counter
+    // ADDITIONAL FIX: Deep clone the authenticator object to prevent corruption
+    const safeAuthenticatorDevice = {
+      credentialID: new Uint8Array(authenticatorDevice.credentialID),
+      credentialPublicKey: new Uint8Array(authenticatorDevice.credentialPublicKey),
+      counter: Number(authenticatorDevice.counter),
+      ...(authenticatorDevice.transports && { transports: [...authenticatorDevice.transports] })
+    };
+
+    console.log('🚀 Final safe authenticator device before SimpleWebAuthn call:', {
+      isObject: typeof safeAuthenticatorDevice === 'object',
+      isNull: safeAuthenticatorDevice === null,
+      isUndefined: safeAuthenticatorDevice === undefined,
+      keys: Object.keys(safeAuthenticatorDevice || {}),
+      counter: safeAuthenticatorDevice?.counter,
+      counterType: typeof safeAuthenticatorDevice?.counter,
+      credentialID_type: safeAuthenticatorDevice.credentialID?.constructor?.name,
+      credentialPublicKey_type: safeAuthenticatorDevice.credentialPublicKey?.constructor?.name
     });
 
-    // FIXED: Call verifyAuthenticationResponse with proper parameter structure
-    const verification = await verifyAuthenticationResponse({
-      response: body, // Pass the entire body, not a restructured object
-      expectedChallenge: expectedChallenge,
-      expectedOrigin: ORIGIN,
-      expectedRPID: rpID,
-      authenticator: authenticatorDevice, // This should now work
-      requireUserVerification: false // Add this if you're not requiring UV
-    });
+    // DEFENSIVE: Try multiple approaches to prevent the undefined authenticator issue
+    let verification;
+    
+    // DEBUGGING: Monkey patch to intercept the actual call
+    const originalVerify = verifyAuthenticationResponse;
+    const interceptedVerify = function(params) {
+      console.log('🔍 INTERCEPTED CALL - Parameters received by SimpleWebAuthn:');
+      console.log('- response exists:', !!params.response);
+      console.log('- expectedChallenge exists:', !!params.expectedChallenge);
+      console.log('- expectedOrigin exists:', !!params.expectedOrigin);
+      console.log('- expectedRPID exists:', !!params.expectedRPID);
+      console.log('- authenticator exists:', !!params.authenticator);
+      console.log('- authenticator type:', typeof params.authenticator);
+      console.log('- authenticator keys:', params.authenticator ? Object.keys(params.authenticator) : 'N/A');
+      console.log('- authenticator counter:', params.authenticator?.counter);
+      console.log('- authenticator is null:', params.authenticator === null);
+      console.log('- authenticator is undefined:', params.authenticator === undefined);
+      
+      return originalVerify.call(this, params);
+    };
+    
+    try {
+      // First attempt: Standard approach with safe object
+      console.log('🔄 Attempt 1: Standard call with safe authenticator object');
+      console.log('About to call with authenticator:', JSON.stringify({
+        hasCredentialID: !!safeAuthenticatorDevice.credentialID,
+        hasCredentialPublicKey: !!safeAuthenticatorDevice.credentialPublicKey,
+        counter: safeAuthenticatorDevice.counter,
+        keys: Object.keys(safeAuthenticatorDevice)
+      }));
+      
+      verification = await interceptedVerify({
+        response: body,
+        expectedChallenge: expectedChallenge,
+        expectedOrigin: ORIGIN,
+        expectedRPID: rpID,
+        authenticator: safeAuthenticatorDevice,
+        requireUserVerification: false
+      });
+      
+    } catch (firstError) {
+      console.error('❌ First attempt failed:', firstError.message);
+      
+      if (firstError.message.includes('Cannot read properties of undefined')) {
+        console.log('🔄 Attempt 2: Trying with inline object creation');
+        
+        try {
+          // Second attempt: Create the authenticator object inline
+          verification = await interceptedVerify({
+            response: body,
+            expectedChallenge: expectedChallenge,
+            expectedOrigin: ORIGIN,
+            expectedRPID: rpID,
+            authenticator: {
+              credentialID: new Uint8Array(auth.credential_id),
+              credentialPublicKey: new Uint8Array(Buffer.from(auth.public_key, 'base64')),
+              counter: parseInt(auth.counter) || 0,
+              transports: auth.transports || []
+            },
+            requireUserVerification: false
+          });
+          
+        } catch (secondError) {
+          console.error('❌ Second attempt failed:', secondError.message);
+          
+          if (secondError.message.includes('Cannot read properties of undefined')) {
+            console.log('🔄 Attempt 3: Trying with minimal authenticator object');
+            
+            // Third attempt: Minimal object
+            verification = await interceptedVerify({
+              response: body,
+              expectedChallenge: expectedChallenge,
+              expectedOrigin: ORIGIN,
+              expectedRPID: rpID,
+              authenticator: {
+                credentialID: auth.credential_id,
+                credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
+                counter: auth.counter || 0
+              }
+            });
+          } else {
+            throw secondError;
+          }
+        }
+      } else {
+        throw firstError;
+      }
+    }
 
     console.log('✅ Verification completed:', {
       verified: verification.verified,
