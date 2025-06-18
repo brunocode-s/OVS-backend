@@ -260,15 +260,36 @@ export const verifyAuthentication = async (req, res) => {
       credential_id_is_buffer: Buffer.isBuffer(auth.credential_id)
     });
 
-    // ✅ FIXED: More robust authenticator device creation
-    const authenticatorDevice = {
-      credentialID: Buffer.isBuffer(auth.credential_id) 
-        ? auth.credential_id 
-        : Buffer.from(auth.credential_id, 'hex'), // Handle string case
-      credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
-      counter: counterValue, // Use processed counter value
-      transports: auth.transports || []
-    };
+    // ✅ FIXED: More robust authenticator device creation with safety checks
+    let authenticatorDevice;
+    
+    try {
+      // Ensure we have the required data
+      if (!auth.credential_id) {
+        throw new Error('Missing credential_id in database record');
+      }
+      if (!auth.public_key) {
+        throw new Error('Missing public_key in database record');
+      }
+      
+      authenticatorDevice = {
+        credentialID: Buffer.isBuffer(auth.credential_id) 
+          ? auth.credential_id 
+          : Buffer.from(auth.credential_id, 'hex'),
+        credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
+        counter: counterValue,
+        transports: auth.transports || []
+      };
+      
+      console.log('✅ Authenticator device created successfully');
+      
+    } catch (deviceCreationError) {
+      console.error('❌ Failed to create authenticator device:', deviceCreationError.message);
+      return res.status(500).json({ 
+        message: 'Failed to create authenticator device', 
+        error: deviceCreationError.message 
+      });
+    }
     
     // ✅ ADDED: Validate authenticator device before using it
     if (!Buffer.isBuffer(authenticatorDevice.credentialID)) {
@@ -293,13 +314,47 @@ export const verifyAuthentication = async (req, res) => {
       counterType: typeof authenticatorDevice.counter
     });
 
-    const verification = await verifyAuthenticationResponse({
+    // ✅ CRITICAL DEBUG: Log everything right before the call
+    console.log('🚨 FINAL PRE-VERIFICATION CHECK:');
+    console.log('- cleanedBody exists:', !!cleanedBody);
+    console.log('- expectedChallenge exists:', !!expectedChallenge);
+    console.log('- ORIGIN exists:', !!ORIGIN);
+    console.log('- rpID exists:', !!rpID);
+    console.log('- authenticatorDevice exists:', !!authenticatorDevice);
+    console.log('- authenticatorDevice type:', typeof authenticatorDevice);
+    
+    if (authenticatorDevice) {
+      console.log('- authenticatorDevice.counter:', authenticatorDevice.counter);
+      console.log('- authenticatorDevice has counter property:', authenticatorDevice.hasOwnProperty('counter'));
+      console.log('- authenticatorDevice keys:', Object.keys(authenticatorDevice));
+    } else {
+      console.error('❌ CRITICAL: authenticatorDevice is falsy!');
+      return res.status(500).json({ message: 'Authenticator device is undefined' });
+    }
+    
+    // Create verification params object for additional debugging
+    const verificationParams = {
       response: cleanedBody,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
       authenticator: authenticatorDevice,
-    });
+    };
+    
+    console.log('🔍 Verification params structure:');
+    console.log('- response exists:', !!verificationParams.response);
+    console.log('- expectedChallenge exists:', !!verificationParams.expectedChallenge);
+    console.log('- expectedOrigin exists:', !!verificationParams.expectedOrigin);
+    console.log('- expectedRPID exists:', !!verificationParams.expectedRPID);
+    console.log('- authenticator exists:', !!verificationParams.authenticator);
+    
+    // Ensure ORIGIN is defined
+    if (!ORIGIN) {
+      console.error('❌ ORIGIN is undefined!');
+      return res.status(500).json({ message: 'Server configuration error: ORIGIN not defined' });
+    }
+
+    const verification = await verifyAuthenticationResponse(verificationParams);
 
     console.log('Verification result:', {
       verified: verification.verified,
