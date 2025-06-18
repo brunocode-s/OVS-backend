@@ -175,14 +175,53 @@ export const verifyAuthentication = async (req, res) => {
     console.log('Session rpID:', rpID);
     
     // Log the entire request body structure
-    console.log('Full request body:', JSON.stringify(body, null, 2));
-    console.log('Body response structure:', {
+    // Critical debugging - check the response structure
+    console.log('🔍 REQUEST BODY STRUCTURE:');
+    console.log('- body.id:', body.id);
+    console.log('- body.rawId:', body.rawId);
+    console.log('- body.type:', body.type);
+    console.log('- body.response exists:', !!body.response);
+    
+    if (body.response) {
+      console.log('- body.response.authenticatorData:', body.response.authenticatorData?.substring(0, 50) + '...');
+      console.log('- body.response.signature:', body.response.signature?.substring(0, 50) + '...');
+      console.log('- body.response.clientDataJSON:', body.response.clientDataJSON?.substring(0, 50) + '...');
+      console.log('- body.response.userHandle:', body.response.userHandle);
+      
+      // Check if these are valid base64url strings
+      console.log('- authenticatorData length:', body.response.authenticatorData?.length);
+      console.log('- signature length:', body.response.signature?.length);
+      console.log('- clientDataJSON length:', body.response.clientDataJSON?.length);
+    }
+    
+    // Try to validate the response format before passing to library
+    if (!body.response || !body.response.authenticatorData || !body.response.signature || !body.response.clientDataJSON) {
+      console.log('❌ Invalid response structure - missing required fields');
+      return res.status(400).json({ 
+        message: 'Invalid WebAuthn response structure',
+        missing: {
+          response: !body.response,
+          authenticatorData: !body.response?.authenticatorData,
+          signature: !body.response?.signature,
+          clientDataJSON: !body.response?.clientDataJSON
+        }
+      });
+    }
+    
+    // Clean the body to remove extra fields that might confuse the library
+    const cleanedBody = {
       id: body.id,
       rawId: body.rawId,
       type: body.type,
-      hasResponse: !!body.response,
-      responseKeys: body.response ? Object.keys(body.response) : 'no response'
-    });
+      response: {
+        authenticatorData: body.response.authenticatorData,
+        signature: body.response.signature,
+        clientDataJSON: body.response.clientDataJSON,
+        userHandle: body.response.userHandle
+      }
+    };
+    
+    console.log('🧹 Using cleaned request body for verification');
 
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     console.log('Parsed Credential ID Buffer:', credentialIDBuffer.toString('hex'));
@@ -228,7 +267,7 @@ export const verifyAuthentication = async (req, res) => {
     });
 
     const verification = await verifyAuthenticationResponse({
-      response: body,
+      response: cleanedBody, // Use cleaned body instead of original body
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
