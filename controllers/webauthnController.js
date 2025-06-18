@@ -169,12 +169,19 @@ export const verifyAuthentication = async (req, res) => {
   const rpID = req.session.rpID;
 
   try {
+    console.log('🧪 Starting WebAuthn verification...');
+    console.log('Expected Challenge:', expectedChallenge);
+    console.log('Request rawId:', body.rawId);
+    console.log('Session rpID:', rpID);
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
+    console.log('Parsed Credential ID Buffer:', credentialIDBuffer.toString('hex'));
 
     const authRow = await query(
       'SELECT * FROM authenticators WHERE credential_id = $1',
       [credentialIDBuffer]
     );
+    console.log('Authenticator lookup result:', authRow.rows);
+ 
 
     if (!authRow.rows.length) {
       return res.status(400).json({ message: 'Authenticator not found' });
