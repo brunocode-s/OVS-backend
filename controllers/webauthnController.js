@@ -190,6 +190,16 @@ export const verifyAuthentication = async (req, res) => {
 
   try {
     console.log('🧪 Starting WebAuthn verification...');
+    
+    // Debug session data
+    console.log('🔍 Session data:', {
+      hasChallenge: !!expectedChallenge,
+      challengeLength: expectedChallenge?.length,
+      rpID,
+      challengeExpiresAt: req.session.challengeExpiresAt,
+      currentTime: Date.now(),
+      challengeValid: req.session.challengeExpiresAt && Date.now() <= req.session.challengeExpiresAt
+    });
 
     // Validate session data
     if (!expectedChallenge || Date.now() > req.session.challengeExpiresAt) {
@@ -197,6 +207,15 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     // Validate response structure
+    console.log('🔍 Request body structure:', {
+      hasRawId: !!body.rawId,
+      rawIdLength: body.rawId?.length,
+      hasResponse: !!body.response,
+      hasAuthenticatorData: !!body.response?.authenticatorData,
+      hasSignature: !!body.response?.signature,
+      hasClientDataJSON: !!body.response?.clientDataJSON,
+    });
+
     if (
       !body.response?.authenticatorData ||
       !body.response?.signature ||
@@ -219,15 +238,35 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     const auth = authRow.rows[0];
-    console.log('✅ Found authenticator');
+    console.log('✅ Found authenticator:', {
+      id: auth.id,
+      counter: auth.counter,
+      counterType: typeof auth.counter,
+      hasCounter: auth.counter !== null && auth.counter !== undefined
+    });
 
-    // Safe counter handling
+    // More robust counter handling
     let counterValue = 0;
+    
+    // Check if counter exists and handle different data types
     if (auth.counter !== null && auth.counter !== undefined) {
-      if (typeof auth.counter === 'string') counterValue = parseInt(auth.counter, 10) || 0;
-      else if (typeof auth.counter === 'number') counterValue = auth.counter;
-      else if (typeof auth.counter === 'bigint') counterValue = Number(auth.counter);
+      if (typeof auth.counter === 'string') {
+        counterValue = parseInt(auth.counter, 10);
+        if (isNaN(counterValue)) counterValue = 0;
+      } else if (typeof auth.counter === 'number') {
+        counterValue = auth.counter;
+      } else if (typeof auth.counter === 'bigint') {
+        counterValue = Number(auth.counter);
+      } else {
+        console.warn('⚠️ Unexpected counter type:', typeof auth.counter, auth.counter);
+        counterValue = 0;
+      }
     }
+
+    // Ensure counter is a valid number
+    counterValue = Math.max(0, Math.floor(counterValue) || 0);
+    
+    console.log('✅ Counter value determined:', counterValue);
 
     const publicKeyBuffer = Buffer.isBuffer(auth.public_key)
       ? auth.public_key
@@ -236,11 +275,31 @@ export const verifyAuthentication = async (req, res) => {
     const authenticatorDevice = {
       credentialID: credentialIDBuffer,
       credentialPublicKey: publicKeyBuffer,
-      counter: Math.max(0, counterValue),
+      counter: counterValue, // This should now always be a valid number
       transports: Array.isArray(auth.transports) ? auth.transports : [],
     };
 
+    // Debug log the authenticator object
+    console.log('🔍 Authenticator device:', {
+      credentialID: authenticatorDevice.credentialID.length,
+      credentialPublicKey: authenticatorDevice.credentialPublicKey.length,
+      counter: authenticatorDevice.counter,
+      counterType: typeof authenticatorDevice.counter,
+      transports: authenticatorDevice.transports
+    });
+
     console.log('✅ Authenticator device prepared');
+
+    // Validate the authenticator object before passing it
+    if (!authenticatorDevice.credentialID || !authenticatorDevice.credentialPublicKey) {
+      throw new Error('Invalid authenticator device: missing credentialID or credentialPublicKey');
+    }
+    
+    if (typeof authenticatorDevice.counter !== 'number' || isNaN(authenticatorDevice.counter)) {
+      throw new Error(`Invalid authenticator counter: ${authenticatorDevice.counter} (type: ${typeof authenticatorDevice.counter})`);
+    }
+
+    console.log('🔍 Final authenticator validation passed');
 
     const verification = await verifyAuthenticationResponse({
       response: body,
@@ -256,7 +315,8 @@ export const verifyAuthentication = async (req, res) => {
     if (verification.verified) {
       const newCounter = verification.authenticationInfo?.newCounter;
 
-      if (newCounter !== undefined) {
+      if (newCounter !== undefined && newCounter !== null) {
+        console.log('🔄 Updating counter from', counterValue, 'to', newCounter);
         await query(
           'UPDATE authenticators SET counter = $1 WHERE id = $2',
           [newCounter, auth.id]
@@ -275,13 +335,13 @@ export const verifyAuthentication = async (req, res) => {
     }
   } catch (err) {
     console.error('❌ Authentication failed:', err);
+    console.error('Stack trace:', err.stack);
     res.status(500).json({
       message: 'Authentication failed',
       error: err.message,
     });
   }
 };
-
 
 // ========= CHECK =========
 
