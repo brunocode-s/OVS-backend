@@ -226,6 +226,8 @@ export const verifyAuthentication = async (req, res) => {
       [credentialIDBuffer]
     );
 
+    console.log('Authenticator DB row:', authRow.rows);
+
     console.log('Database query result:', {
       rowCount: authRow.rows.length,
       rows: authRow.rows.map(row => ({
