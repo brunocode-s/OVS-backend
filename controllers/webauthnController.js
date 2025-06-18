@@ -197,17 +197,32 @@ export const verifyAuthentication = async (req, res) => {
       public_key_preview: auth.public_key.substring(0, 50) + '...'
     });
 
+    // Ensure all required properties are present and correctly typed
+    const authenticatorDevice = {
+      credentialID: auth.credential_id, // This should already be a Buffer from DB query
+      credentialPublicKey: Buffer.from(auth.public_key.split(',').map(Number)),
+      counter: auth.counter ?? 0,
+      transports: auth.transports || [] // Ensure transports is always an array
+    };
+
+    console.log('Authenticator device structure:', {
+      credentialID: authenticatorDevice.credentialID,
+      credentialIDType: typeof authenticatorDevice.credentialID,
+      credentialIDIsBuffer: Buffer.isBuffer(authenticatorDevice.credentialID),
+      credentialPublicKeyType: typeof authenticatorDevice.credentialPublicKey,
+      credentialPublicKeyIsBuffer: Buffer.isBuffer(authenticatorDevice.credentialPublicKey),
+      counter: authenticatorDevice.counter,
+      counterType: typeof authenticatorDevice.counter,
+      transports: authenticatorDevice.transports,
+      transportsType: typeof authenticatorDevice.transports
+    });
+
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
-      authenticator: {
-        credentialID: auth.credential_id,
-        // Fix: Convert comma-separated string to Buffer
-        credentialPublicKey: Buffer.from(auth.public_key.split(',').map(Number)),
-        counter: auth.counter ?? 0,
-      },
+      authenticator: authenticatorDevice,
     });
 
     console.log('Verification result:', {
@@ -252,6 +267,7 @@ export const verifyAuthentication = async (req, res) => {
     res.status(500).json({ message: 'Authentication failed', error: err.message });
   }
 };
+
 // ========= CHECK =========
 
 export const checkFingerprintRegistration = async (req, res) => {
