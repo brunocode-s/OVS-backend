@@ -1,21 +1,21 @@
 import { hash, compare } from 'bcryptjs';
 import { query } from '../models/db.js';
-import { Fido2Lib } from 'fido2-lib';
+// import { Fido2Lib } from 'fido2-lib';
 import { generateToken } from '../utils/jwt.js';
 import { sendEmail } from '../utils/email.js';
 import jwt from 'jsonwebtoken';
-import base64url from 'base64url';
+// import base64url from 'base64url';
 
-const fido2 = new Fido2Lib({
-  timeout: 60000,
-  rpId: 'ovs-frontend-drab.vercel.app',
-  rpName: 'Online Voting System',
-  challengeSize: 64,
-  attestation: 'none',
-  authenticatorAttachment: 'platform',
-  authenticatorRequireResidentKey: false,
-  authenticatorUserVerification: 'required',
-});
+// const fido2 = new Fido2Lib({
+//   timeout: 60000,
+//   rpId: 'ovs-frontend-drab.vercel.app',
+//   rpName: 'Online Voting System',
+//   challengeSize: 64,
+//   attestation: 'none',
+//   authenticatorAttachment: 'platform',
+//   authenticatorRequireResidentKey: false,
+//   authenticatorUserVerification: 'required',
+// });
 
 // Helper function to send password reset email
 const sendPasswordResetEmail = async (email, firstName, resetLink) => {
@@ -185,119 +185,119 @@ const hasFingerprint = async (req, res) => {
 };
 
 
-const startFingerprintLogin = async (req, res) => {
-  try {
-    const { email } = req.body;
+// const startFingerprintLogin = async (req, res) => {
+//   try {
+//     const { email } = req.body;
 
-    // Step 1: Get user by email
-    const userResult = await query('SELECT * FROM users WHERE email = $1', [email]);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+//     // Step 1: Get user by email
+//     const userResult = await query('SELECT * FROM users WHERE email = $1', [email]);
+//     if (userResult.rows.length === 0) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
 
-    const user = userResult.rows[0];
+//     const user = userResult.rows[0];
 
-    // Step 2: Get all authenticators for this user
-    const authResult = await query('SELECT * FROM authenticators WHERE user_id = $1', [user.id]);
-    if (authResult.rows.length === 0) {
-      return res.status(404).json({ message: 'No fingerprint authenticators found for this user' });
-    }
+//     // Step 2: Get all authenticators for this user
+//     const authResult = await query('SELECT * FROM authenticators WHERE user_id = $1', [user.id]);
+//     if (authResult.rows.length === 0) {
+//       return res.status(404).json({ message: 'No fingerprint authenticators found for this user' });
+//     }
 
-    // Step 3: Format allowCredentials from authenticators
-    const allowCredentials = authResult.rows.map((authenticator) => ({
-      type: 'public-key',
-      id: Buffer.from(authenticator.credential_id, 'base64'),
-      transports: ['internal'],
-    }));
+//     // Step 3: Format allowCredentials from authenticators
+//     const allowCredentials = authResult.rows.map((authenticator) => ({
+//       type: 'public-key',
+//       id: Buffer.from(authenticator.credential_id, 'base64'),
+//       transports: ['internal'],
+//     }));
 
-    // Step 4: Generate assertion options
-    const options = await fido2.assertionOptions();
-    options.challenge = base64url.encode(options.challenge);
-    options.allowCredentials = allowCredentials;
+//     // Step 4: Generate assertion options
+//     const options = await fido2.assertionOptions();
+//     options.challenge = base64url.encode(options.challenge);
+//     options.allowCredentials = allowCredentials;
 
-    // Step 5: Save challenge in users table
-    await query('UPDATE users SET challenge = $1 WHERE id = $2', [
-      options.challenge,
-      user.id
-    ]);
+//     // Step 5: Save challenge in users table
+//     await query('UPDATE users SET challenge = $1 WHERE id = $2', [
+//       options.challenge,
+//       user.id
+//     ]);
 
-    // Step 6: Respond with options
-    res.json(options);
-  } catch (err) {
-    console.error('Error during fingerprint login start:', err);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//     // Step 6: Respond with options
+//     res.json(options);
+//   } catch (err) {
+//     console.error('Error during fingerprint login start:', err);
+//     res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 
 
-const verifyFingerprintLogin = async (req, res) => {
-  const { id, rawId, response, type } = req.body;
+// const verifyFingerprintLogin = async (req, res) => {
+//   const { id, rawId, response, type } = req.body;
 
-  try {
-    const credentialId = base64url.encode(Buffer.from(rawId, 'base64'));
+//   try {
+//     const credentialId = base64url.encode(Buffer.from(rawId, 'base64'));
 
-    const authResult = await query('SELECT * FROM authenticators WHERE credential_id = $1', [credentialId]);
-    if (authResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Authenticator not found' });
-    }
+//     const authResult = await query('SELECT * FROM authenticators WHERE credential_id = $1', [credentialId]);
+//     if (authResult.rows.length === 0) {
+//       return res.status(404).json({ message: 'Authenticator not found' });
+//     }
 
-    const authenticator = authResult.rows[0];
+//     const authenticator = authResult.rows[0];
 
-    const userResult = await query('SELECT * FROM users WHERE id = $1', [authenticator.user_id]);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+//     const userResult = await query('SELECT * FROM users WHERE id = $1', [authenticator.user_id]);
+//     if (userResult.rows.length === 0) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
 
-    const user = userResult.rows[0];
+//     const user = userResult.rows[0];
 
-    const expected = {
-      challenge: user.challenge,
-      origin: 'https://ovs-frontend-drab.vercel.app',
-      factor: 'either',
-      publicKey: authenticator.public_key,
-      prevCounter: authenticator.counter,
-      userHandle: null,
-      rpId: 'ovs-frontend-drab.vercel.app'
-    };
+//     const expected = {
+//       challenge: user.challenge,
+//       origin: 'https://ovs-frontend-drab.vercel.app',
+//       factor: 'either',
+//       publicKey: authenticator.public_key,
+//       prevCounter: authenticator.counter,
+//       userHandle: null,
+//       rpId: 'ovs-frontend-drab.vercel.app'
+//     };
 
-    const assertionResult = await fido2.assertionResult(
-      { id, rawId, response, type },
-      expected
-    );
+//     const assertionResult = await fido2.assertionResult(
+//       { id, rawId, response, type },
+//       expected
+//     );
 
-    if (assertionResult.verified) {
-      // Update counter
-      await query('UPDATE authenticators SET counter = $1 WHERE credential_id = $2', [
-        assertionResult.authnrData.get('counter'),
-        credentialId
-      ]);
+//     if (assertionResult.verified) {
+//       // Update counter
+//       await query('UPDATE authenticators SET counter = $1 WHERE credential_id = $2', [
+//         assertionResult.authnrData.get('counter'),
+//         credentialId
+//       ]);
 
-      const token = generateToken({
-        id: user.id,
-        firstName: user.firstname,
-        lastName: user.lastname,
-        email: user.email,
-        role: user.role
-      });
+//       const token = generateToken({
+//         id: user.id,
+//         firstName: user.firstname,
+//         lastName: user.lastname,
+//         email: user.email,
+//         role: user.role
+//       });
 
-      return res.status(200).json({
-        user: {
-          id: user.id,
-          firstName: user.firstname,
-          lastName: user.lastname,
-          email: user.email,
-          role: user.role
-        },
-        token
-      });
-    } else {
-      return res.status(401).json({ message: 'Fingerprint verification failed' });
-    }
-  } catch (err) {
-    console.error('Error during fingerprint login verification:', err);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//       return res.status(200).json({
+//         user: {
+//           id: user.id,
+//           firstName: user.firstname,
+//           lastName: user.lastname,
+//           email: user.email,
+//           role: user.role
+//         },
+//         token
+//       });
+//     } else {
+//       return res.status(401).json({ message: 'Fingerprint verification failed' });
+//     }
+//   } catch (err) {
+//     console.error('Error during fingerprint login verification:', err);
+//     res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 
 export {
   register,
@@ -305,6 +305,6 @@ export {
   forgotPassword,
   resetPassword,
   hasFingerprint,
-  startFingerprintLogin,
-  verifyFingerprintLogin
+  // startFingerprintLogin,
+  // verifyFingerprintLogin
 };
