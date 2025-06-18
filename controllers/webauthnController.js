@@ -100,7 +100,7 @@ export const verifyRegistration = async (req, res) => {
         credentialID, // Buffer
         credentialPublicKey.toString('base64'), // base64 string
         counter,
-        transportsFormatted, 
+        transports || [],
       ]
     );
 
@@ -141,13 +141,13 @@ export const getAuthenticationOptions = async (req, res) => {
       [userId]
     );
 
-    const allowCredentials = authRows.rows.map((auth) => {
-      const id = isoBase64URL.fromBuffer(auth.credential_id);
-      return {
-        id,
+    const allowCredentials = authRows.rows
+      .filter((auth) => !auth.transports || auth.transports.includes('internal'))
+      .map((auth) => ({
+        id: isoBase64URL.fromBuffer(auth.credential_id),
         type: 'public-key',
-      };
-    });
+        transports: auth.transports || undefined,
+    }));
 
     if (!allowCredentials.length) {
       return res.status(400).json({ message: 'No registered authenticators found' });
