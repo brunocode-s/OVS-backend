@@ -248,11 +248,12 @@ export const verifyAuthentication = async (req, res) => {
 
     // Ensure all required properties are present and correctly typed
     const authenticatorDevice = {
-      credentialID: auth.credential_id, // This should already be a Buffer from DB query
-      credentialPublicKey: Buffer.from(auth.public_key.split(',').map(Number)),
-      counter: auth.counter ?? 0,
-      transports: auth.transports || [] // Ensure transports is always an array
+      credentialID: Buffer.from(auth.credential_id), // confirm it's Buffer
+      credentialPublicKey: Buffer.from(auth.public_key, 'base64'), // ✅ FIXED
+      counter: auth.counter ?? 0, // must be a number
+      transports: auth.transports || [] // optional
     };
+    
 
     console.log('Authenticator device structure:', {
       credentialID: authenticatorDevice.credentialID,
