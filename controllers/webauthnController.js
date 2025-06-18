@@ -93,7 +93,7 @@ export const verifyRegistration = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [
         req.user.id,
-        Buffer.from(credentialID), // ✅ Store raw credentialID as BYTEA
+        isoBase64URL.toBuffer(credentialID), 
         credentialPublicKey.toString('base64'),
         counter,
         transports || [],
