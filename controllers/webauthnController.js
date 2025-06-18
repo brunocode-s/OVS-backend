@@ -197,7 +197,7 @@ export const verifyAuthentication = async (req, res) => {
       authenticator: {
         credentialID: auth.credential_id,
         credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
-        counter: auth.counter,
+        counter: auth.counter ?? 0,
       },
     });
 
