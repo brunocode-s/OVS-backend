@@ -170,9 +170,10 @@ export const getAuthenticationOptions = async (req, res) => {
       userVerification: 'required',
     });
 
-    req.session.userId = userId;
+    req.session.challenge = options.challenge; // 🔥 critical fix
     req.session.challengeExpiresAt = Date.now() + 5 * 60 * 1000;
     req.session.rpID = rpID;
+    req.session.userId = userId;
 
     await req.session.save();
     res.json(options);
