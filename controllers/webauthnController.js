@@ -221,6 +221,7 @@ export const verifyAuthentication = async (req, res) => {
         credentialID: auth.credential_id, // Stored as Buffer
         credentialPublicKey: Buffer.from(auth.public_key, 'base64'), // Stored as base64 text
         counter: auth.counter,
+        transports: auth.transports,
       },
     });
 
@@ -239,7 +240,7 @@ export const verifyAuthentication = async (req, res) => {
     res.status(400).json({ success: false });
   } catch (err) {
     console.error('Error verifying authentication:', err);
-    res.status(500).json({ message: 'Error verifying authentication' });
+    res.status(500).json({ message: 'Error verifying authentication', error: err.message });
   }
 };
 
