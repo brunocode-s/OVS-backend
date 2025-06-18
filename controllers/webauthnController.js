@@ -170,7 +170,7 @@ export const getAuthenticationOptions = async (req, res) => {
       userVerification: 'required',
     });
 
-    req.session.challenge = options.challenge;
+    req.session.userId = userId;
     req.session.challengeExpiresAt = Date.now() + 5 * 60 * 1000;
     req.session.rpID = rpID;
 
@@ -216,6 +216,11 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     const auth = authRow.rows[0];
+    if (!auth) {
+      console.log('❌ No authenticator found after query');
+      return res.status(400).json({ message: 'Authenticator lookup failed' });
+    }
+    
     console.log('✅ Found authenticator');
 
     // Handle counter
@@ -234,8 +239,8 @@ export const verifyAuthentication = async (req, res) => {
 
 
     const authenticatorDevice = {
-      credentialID: new Uint8Array(credentialIDBuffer),
-      credentialPublicKey: new Uint8Array(publicKeyBuffer),
+      credentialID: credentialIDBuffer,
+      credentialPublicKey: publicKeyBuffer,
       counter: Math.max(0, counterValue),
       transports: Array.isArray(auth.transports) ? auth.transports : [],
     };
