@@ -203,10 +203,10 @@ export const verifyAuthentication = async (req, res) => {
 
     if (verification.verified) {
       const newCounter = verification.authenticationInfo?.newCounter ?? 0;
-
+    
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
-        [verification.authenticationInfo.newCounter, auth.id]
+        [newCounter, auth.id]
       );
 
       req.session.challenge = null;
