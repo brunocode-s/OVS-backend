@@ -6,6 +6,7 @@ import {
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { query } from '../models/db.js';
+import jwt from 'jsonwebtoken';
 
 const ORIGIN = 'https://ovs-frontend-drab.vercel.app';
 const getRpID = () => 'ovs-frontend-drab.vercel.app';
@@ -310,28 +311,64 @@ export const verifyAuthentication = async (req, res) => {
 
     console.log('✅ Verification result:', verification.verified);
 
-    if (verification.verified) {
-      const newCounter = verification.authenticationInfo?.newCounter;
+    // Replace your existing verifyAuthentication success block with this:
 
-      if (newCounter !== undefined && newCounter !== null) {
-        console.log('🔄 Updating counter from', counterValue, 'to', newCounter);
-        await query(
-          'UPDATE authenticators SET counter = $1 WHERE id = $2',
-          [newCounter, auth.id]
-        );
-      }
+  if (verification.verified) {
+    const newCounter = verification.authenticationInfo?.newCounter;
 
-      // Clear session challenge and save user ID in session
-      req.session.challenge = null;
-      req.session.challengeExpiresAt = null;
-      req.session.rpID = null;
-      req.session.userId = auth.user_id;
-      await req.session.save();
-
-      return res.json({ success: true });
-    } else {
-      return res.status(400).json({ success: false });
+    if (newCounter !== undefined && newCounter !== null) {
+      console.log('🔄 Updating counter from', counterValue, 'to', newCounter);
+      await query(
+        'UPDATE authenticators SET counter = $1 WHERE id = $2',
+        [newCounter, auth.id]
+      );
     }
+
+    // ✅ FETCH USER DATA - This was missing!
+    const userResult = await query(
+      'SELECT id, email, role, first_name, last_name FROM users WHERE id = $1',
+      [auth.user_id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+
+
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role 
+      },
+      process.env.JWT_SECRET, // Make sure this matches your regular login
+      { expiresIn: '24h' } // Match your regular login expiration
+    );
+
+    // Clear session challenge and save user ID in session
+    req.session.challenge = null;
+    req.session.challengeExpiresAt = null;
+    req.session.rpID = null;
+    req.session.userId = auth.user_id;
+    await req.session.save();
+
+    // ✅ RETURN USER DATA AND TOKEN - This is what your frontend expects!
+    return res.json({ 
+      success: true,
+      token: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.first_name,
+        lastName: user.last_name,
+      }
+    });
+  } else {
+    return res.status(400).json({ success: false });
+  }
   } catch (err) {
     console.error('❌ Authentication failed:', err);
     console.error('Stack trace:', err.stack);
