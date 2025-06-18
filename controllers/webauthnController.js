@@ -183,295 +183,82 @@ export const getAuthenticationOptions = async (req, res) => {
 };
 
 export const verifyAuthentication = async (req, res) => {
-  const body = req.body;
-  const expectedChallenge = req.session.challenge;
-  const rpID = req.session.rpID;
-
   try {
-    console.log('🧪 Starting WebAuthn verification...');
-    console.log('Session data:', { 
-      hasChallenge: !!expectedChallenge, 
-      hasRpID: !!rpID,
-      challengeExpiry: req.session.challengeExpiresAt,
-      currentTime: Date.now()
-    });
-    
-    // Validate session data first
+    const body = req.body;
+    const expectedChallenge = req.session.challenge;
+    const rpID = req.session.rpID;
+
     if (!expectedChallenge || Date.now() > req.session.challengeExpiresAt) {
       return res.status(400).json({ message: 'Challenge expired or missing' });
     }
-    
-    // Validate response structure
-    if (!body.response || !body.response.authenticatorData || !body.response.signature || !body.response.clientDataJSON) {
-      console.log('❌ Invalid response structure');
-      return res.status(400).json({ message: 'Invalid WebAuthn response structure' });
-    }
 
-    console.log('Raw ID from request:', body.rawId);
-    console.log('Raw ID type:', typeof body.rawId);
-    console.log('Raw ID length:', body.rawId?.length);
-
-    let credentialIDBuffer;
-    try {
-      credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
-      console.log('✅ Successfully converted rawId to buffer:', credentialIDBuffer.toString('hex'));
-    } catch (bufferError) {
-      console.error('❌ Failed to convert rawId to buffer:', bufferError.message);
-      return res.status(400).json({ message: 'Invalid credential ID format' });
-    }
-
-    console.log('🔍 Looking up authenticator in database...');
-    console.log('Query params:', {
-      credentialIDBuffer: credentialIDBuffer.toString('hex'),
-      bufferLength: credentialIDBuffer.length
-    });
-
+    const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     const authRow = await query(
       'SELECT * FROM authenticators WHERE credential_id = $1',
       [credentialIDBuffer]
     );
 
-    console.log('Database query result:', {
-      rowCount: authRow.rows.length,
-      rows: authRow.rows.map(row => ({
-        id: row.id,
-        user_id: row.user_id,
-        credential_id_hex: row.credential_id?.toString('hex'),
-        public_key_length: row.public_key?.length,
-        counter: row.counter,
-        counter_type: typeof row.counter
-      }))
-    });
-
     if (!authRow.rows.length) {
-      console.log('❌ No authenticator found in database');
-      
-      // Debug: Let's see what credential IDs exist in the database
-      const allCreds = await query('SELECT id, credential_id FROM authenticators LIMIT 5');
-      console.log('Available credential IDs in database:', 
-        allCreds.rows.map(row => ({
-          id: row.id,
-          credential_id_hex: row.credential_id?.toString('hex')
-        }))
-      );
-      
       return res.status(400).json({ message: 'Authenticator not found' });
     }
 
     const auth = authRow.rows[0];
-    console.log('Found authenticator record:', {
-      id: auth.id,
-      user_id: auth.user_id,
-      has_credential_id: !!auth.credential_id,
-      has_public_key: !!auth.public_key,
-      counter: auth.counter,
-      counter_type: typeof auth.counter,
-      counter_is_null: auth.counter === null,
-      counter_is_undefined: auth.counter === undefined
-    });
 
-    // CRITICAL: Check if auth object is valid
-    if (!auth) {
-      console.error('❌ Auth object is falsy after database query');
-      return res.status(500).json({ message: 'Database returned invalid authenticator' });
-    }
-
-    if (!auth.credential_id) {
-      console.error('❌ Missing credential_id in database record');
-      return res.status(500).json({ message: 'Invalid authenticator: missing credential_id' });
-    }
-
-    if (!auth.public_key) {
-      console.error('❌ Missing public_key in database record');
-      return res.status(500).json({ message: 'Invalid authenticator: missing public_key' });
-    }
-
-    // Handle counter with extreme care
-    let counterValue = 0;
-    console.log('Processing counter value:', {
-      raw: auth.counter,
-      type: typeof auth.counter,
-      isNull: auth.counter === null,
-      isUndefined: auth.counter === undefined,
-      toString: String(auth.counter)
-    });
-
-    if (auth.counter !== null && auth.counter !== undefined) {
-      if (typeof auth.counter === 'string') {
-        const parsed = parseInt(auth.counter, 10);
-        counterValue = isNaN(parsed) ? 0 : parsed;
-      } else if (typeof auth.counter === 'number') {
-        counterValue = auth.counter;
-      } else if (typeof auth.counter === 'bigint') {
-        counterValue = Number(auth.counter);
-      } else {
-        console.warn('⚠️  Unknown counter type, defaulting to 0:', typeof auth.counter);
-        counterValue = 0;
-      }
-    }
-
-    if (counterValue < 0) {
-      console.warn('⚠️  Negative counter value, setting to 0:', counterValue);
-      counterValue = 0;
-    }
-
-    console.log('Final counter value:', counterValue, typeof counterValue);
-
-    // Create authenticator device with extensive validation
-    let authenticatorDevice;
-    
-    try {
-      console.log('🔧 Creating authenticator device object...');
-      
-      // Ensure credential ID is a proper Buffer
-      let credentialIDForDevice;
-      if (Buffer.isBuffer(auth.credential_id)) {
-        credentialIDForDevice = auth.credential_id;
-      } else if (typeof auth.credential_id === 'string') {
-        credentialIDForDevice = Buffer.from(auth.credential_id, 'hex');
-      } else {
-        throw new Error('credential_id is not a Buffer or string');
-      }
-
-      // Ensure public key is a proper Buffer
-      let publicKeyBuffer;
-      try {
-        publicKeyBuffer = Buffer.from(auth.public_key, 'base64');
-      } catch (publicKeyError) {
-        throw new Error(`Failed to decode public key from base64: ${publicKeyError.message}`);
-      }
-
-      authenticatorDevice = {
-        credentialID: credentialIDForDevice,
-        credentialPublicKey: publicKeyBuffer,
-        counter: counterValue,
-        transports: Array.isArray(auth.transports) ? auth.transports : []
-      };
-
-      console.log('✅ Authenticator device created:', {
-        credentialID_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialID),
-        credentialID_length: authenticatorDevice.credentialID?.length,
-        credentialPublicKey_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialPublicKey),
-        credentialPublicKey_length: authenticatorDevice.credentialPublicKey?.length,
-        counter: authenticatorDevice.counter,
-        counter_type: typeof authenticatorDevice.counter,
-        transports: authenticatorDevice.transports,
-        allKeys: Object.keys(authenticatorDevice)
-      });
-
-    } catch (deviceError) {
-      console.error('❌ Failed to create authenticator device:', deviceError.message);
-      return res.status(500).json({ 
-        message: 'Failed to create authenticator device', 
-        error: deviceError.message 
-      });
-    }
-
-    // Final validation before calling SimpleWebAuthn
-    const validationChecks = {
-      authenticatorDevice_exists: !!authenticatorDevice,
-      authenticatorDevice_type: typeof authenticatorDevice,
-      has_credentialID: !!authenticatorDevice.credentialID,
-      credentialID_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialID),
-      has_credentialPublicKey: !!authenticatorDevice.credentialPublicKey,
-      credentialPublicKey_isBuffer: Buffer.isBuffer(authenticatorDevice.credentialPublicKey),
-      has_counter: authenticatorDevice.hasOwnProperty('counter'),
-      counter_value: authenticatorDevice.counter,
-      counter_type: typeof authenticatorDevice.counter,
-      counter_isNumber: typeof authenticatorDevice.counter === 'number'
+    // FORCE create a valid authenticator object - no variables, no complex logic
+    const authenticator = {
+      credentialID: Buffer.isBuffer(auth.credential_id) ? auth.credential_id : Buffer.from(auth.credential_id, 'hex'),
+      credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
+      counter: (auth.counter && typeof auth.counter === 'number') ? auth.counter : 
+               (auth.counter && typeof auth.counter === 'string') ? parseInt(auth.counter, 10) || 0 :
+               (auth.counter && typeof auth.counter === 'bigint') ? Number(auth.counter) : 0,
+      transports: auth.transports || []
     };
 
-    console.log('🔍 Final validation checks:', validationChecks);
+    // CRITICAL: Log and validate before use
+    console.log('Authenticator object before SimpleWebAuthn call:', {
+      exists: !!authenticator,
+      type: typeof authenticator,
+      keys: Object.keys(authenticator),
+      counter: authenticator.counter,
+      counterType: typeof authenticator.counter,
+      hasCounter: authenticator.hasOwnProperty('counter')
+    });
 
-    // Check each required property
-    if (!authenticatorDevice) {
-      console.error('❌ CRITICAL: authenticatorDevice is falsy');
-      return res.status(500).json({ message: 'Authenticator device is undefined' });
+    // Fail fast if still invalid
+    if (!authenticator || typeof authenticator.counter !== 'number') {
+      console.error('STILL INVALID AUTHENTICATOR:', authenticator);
+      return res.status(500).json({ message: 'Invalid authenticator object' });
     }
 
-    if (!authenticatorDevice.hasOwnProperty('counter')) {
-      console.error('❌ CRITICAL: authenticatorDevice missing counter property');
-      return res.status(500).json({ message: 'Authenticator device missing counter property' });
-    }
-
-    if (typeof authenticatorDevice.counter !== 'number') {
-      console.error('❌ CRITICAL: counter is not a number:', typeof authenticatorDevice.counter);
-      return res.status(500).json({ message: 'Authenticator counter must be a number' });
-    }
-
-    // Prepare verification parameters
-    const verificationParams = {
-      response: {
-        id: body.id,
-        rawId: body.rawId,
-        type: body.type,
-        response: {
-          authenticatorData: body.response.authenticatorData,
-          signature: body.response.signature,
-          clientDataJSON: body.response.clientDataJSON,
-          userHandle: body.response.userHandle
-        }
-      },
+    const verification = await verifyAuthenticationResponse({
+      response: body,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
-      authenticator: authenticatorDevice
-    };
-
-    console.log('🚀 About to call verifyAuthenticationResponse with params:', {
-      response_exists: !!verificationParams.response,
-      expectedChallenge_exists: !!verificationParams.expectedChallenge,
-      expectedOrigin_exists: !!verificationParams.expectedOrigin,
-      expectedRPID_exists: !!verificationParams.expectedRPID,
-      authenticator_exists: !!verificationParams.authenticator,
-      authenticator_is_object: typeof verificationParams.authenticator === 'object',
-      authenticator_has_counter: verificationParams.authenticator?.hasOwnProperty('counter'),
-      authenticator_counter_value: verificationParams.authenticator?.counter
+      authenticator: authenticator // This MUST be a valid object with counter property
     });
 
-    // THIS IS THE CRITICAL CALL - if it fails, we know the authenticator object is the problem
-    const verification = await verifyAuthenticationResponse(verificationParams);
-
-    console.log('✅ Verification completed:', {
-      verified: verification.verified,
-      hasAuthInfo: !!verification.authenticationInfo
-    });
-
-    if (verification.verified && verification.authenticationInfo) {
-      const newCounter = verification.authenticationInfo.newCounter ?? counterValue;
-      
+    if (verification.verified) {
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
-        [newCounter, auth.id]
+        [verification.authenticationInfo?.newCounter || authenticator.counter, auth.id]
       );
 
+      req.session.userId = auth.user_id;
       req.session.challenge = null;
       req.session.challengeExpiresAt = null;
       req.session.rpID = null;
-      req.session.userId = auth.user_id;
       await req.session.save();
 
       return res.json({ success: true });
-    } else {
-      return res.status(400).json({ success: false });
     }
-    
+
+    return res.status(400).json({ success: false });
+
   } catch (err) {
-    console.error('❌ Authentication verification failed:', err.message);
-    console.error('Error name:', err.name);
-    console.error('Error stack:', err.stack);
-    
-    // Log the specific line that failed
-    if (err.stack.includes('verifyAuthenticationResponse.js:144')) {
-      console.error('🚨 ERROR AT LINE 144 - This means authenticator parameter is undefined');
-      console.error('The authenticatorDevice object was not properly passed to SimpleWebAuthn');
-    }
-    
-    res.status(500).json({ 
-      message: 'Authentication failed', 
-      error: err.message,
-      line: err.stack.includes('verifyAuthenticationResponse.js:144') ? 'Line 144 - authenticator undefined' : 'Other error'
-    });
+    console.error('Verification error:', err.message);
+    console.error('Stack:', err.stack);
+    return res.status(500).json({ message: 'Authentication failed', error: err.message });
   }
 };
 
