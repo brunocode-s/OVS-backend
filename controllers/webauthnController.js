@@ -37,8 +37,8 @@ export const getRegistrationOptions = async (req, res) => {
       timeout: 60000,
       attestationType: 'none',
       authenticatorSelection: {
-        userVerification: 'required',
         authenticatorAttachment: 'platform',
+        userVerification: 'required',
       },
       excludedCredentials,
     });
