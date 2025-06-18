@@ -118,58 +118,60 @@ export const verifyRegistration = async (req, res) => {
 // ======== Authentication ========
 
 export const getAuthenticationOptions = async (req, res) => {
-  const user = req.user;
+  const { email } = req.body;
   const rpID = getRpID(req);
 
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
   try {
+    // Get user ID by email
+    const userRes = await query('SELECT id FROM users WHERE email = $1', [email]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const userId = userRes.rows[0].id;
+
+    // Get authenticators for the user
     const authRows = await query(
       'SELECT credential_id FROM authenticators WHERE user_id = $1',
-      [user.id]
+      [userId]
     );
-    console.log('Auth Rows:', authRows.rows);
 
     const allowCredentials = authRows.rows.map((auth) => {
-      console.log('auth credential_id buffer:', auth.credential_id);
-      
-      // Convert the Buffer to a Base64URL string
-      const id = isoBase64URL.fromBuffer(auth.credential_id);  // Convert to Base64URL string
-      
-      console.log('Mapped credential id:', id);
-      
+      const id = isoBase64URL.fromBuffer(auth.credential_id);
       return {
-        id,  // Use the Base64URL string here
+        id,
         type: 'public-key',
       };
     });
 
-    console.log('allowCredentials to send:', allowCredentials);
-
     if (!allowCredentials.length) {
-      console.log('No valid found for user');
-      return res.status(400).json({ message: 'No registered authenticators' });
+      return res.status(400).json({ message: 'No registered authenticators found' });
     }
 
+    // Generate authentication options
     const options = await generateAuthenticationOptions({
       timeout: 60000,
       rpID,
       allowCredentials,
       userVerification: 'preferred',
       authenticatorSelection: {
-        authenticatorAttachment: "platform", // this forces built-in options (like fingerprint)
-        userVerification: "required" // enforce biometric check
+        authenticatorAttachment: 'platform',
+        userVerification: 'required',
       },
     });
 
-    console.log('Generated authentication options:', options);
-
+    // Save session challenge if you're using session
     req.session.challenge = options.challenge;
-    console.log('Current session challenge:', req.session.challenge);
-    req.session.challengeExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+    req.session.challengeExpiresAt = Date.now() + 5 * 60 * 1000;
     req.session.rpID = rpID;
 
     await req.session.save();
 
-    console.log('Current session after save:', req.session);
     res.json(options);
   } catch (err) {
     console.error('Error generating authentication options:', err);
