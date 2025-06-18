@@ -227,7 +227,10 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     // Decode the stored public key (Base64 TEXT)
-    const publicKeyBuffer = auth.public_key;
+    const publicKeyBuffer = Buffer.isBuffer(auth.public_key)
+    ? auth.public_key
+    : Buffer.from(auth.public_key, 'base64');
+
 
 
     const authenticatorDevice = {
@@ -251,20 +254,20 @@ export const verifyAuthentication = async (req, res) => {
 
     console.log('✅ Verification result:', verification.verified);
 
-    if (verification.verified && verification.authenticationInfo) {
-      const newCounter = verification.authenticationInfo.newCounter ?? counterValue;
-
+    if (verification.verified) {
+      const newCounter = verification.authenticationInfo?.newCounter ?? counterValue;
+    
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
         [newCounter, auth.id]
       );
-
+    
       req.session.challenge = null;
       req.session.challengeExpiresAt = null;
       req.session.rpID = null;
       req.session.userId = auth.user_id;
       await req.session.save();
-
+    
       return res.json({ success: true });
     } else {
       return res.status(400).json({ success: false });
