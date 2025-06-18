@@ -248,7 +248,7 @@ export const verifyAuthentication = async (req, res) => {
 
     // Ensure all required properties are present and correctly typed
     const authenticatorDevice = {
-      credentialID: Buffer.from(auth.credential_id), // confirm it's Buffer
+      credentialID: auth.credential_id, // confirm it's Buffer
       credentialPublicKey: Buffer.from(auth.public_key, 'base64'), // ✅ FIXED
       counter: auth.counter ?? 0, // must be a number
       transports: auth.transports || [] // optional
