@@ -173,6 +173,7 @@ export const verifyAuthentication = async (req, res) => {
     console.log('Expected Challenge:', expectedChallenge);
     console.log('Request rawId:', body.rawId);
     console.log('Session rpID:', rpID);
+
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     console.log('Parsed Credential ID Buffer:', credentialIDBuffer.toString('hex'));
 
@@ -181,7 +182,6 @@ export const verifyAuthentication = async (req, res) => {
       [credentialIDBuffer]
     );
     console.log('Authenticator lookup result:', authRow.rows);
- 
 
     if (!authRow.rows.length) {
       return res.status(400).json({ message: 'Authenticator not found' });
@@ -201,16 +201,21 @@ export const verifyAuthentication = async (req, res) => {
       },
     });
 
-    if (verification.verified) {
-      const newCounter = verification.authenticationInfo?.newCounter ?? 0;
-    
+    if (verification.verified && verification.authenticationInfo) {
+      const newCounter = verification.authenticationInfo.newCounter ?? 0;
+
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
         [newCounter, auth.id]
       );
 
+      // Clear challenge and rpID from session
       req.session.challenge = null;
       req.session.rpID = null;
+
+      // Optional: attach user session (auto-login)
+      req.session.userId = auth.user_id;
+      await req.session.save();
 
       return res.json({ success: true });
     } else {
