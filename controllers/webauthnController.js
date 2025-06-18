@@ -28,6 +28,10 @@ export const getRegistrationOptions = async (req, res) => {
       transports: auth.transports || undefined,
     }));
 
+    // ✅ Convert numeric user ID to Buffer (UInt32BE = 4 bytes)
+    const userIDBuffer = Buffer.alloc(4);
+    userIDBuffer.writeUInt32BE(user.id);
+
     const options = await generateRegistrationOptions({
       rpName: 'Online Voting System',
       rpID,
@@ -89,7 +93,7 @@ export const verifyRegistration = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [
         req.user.id,
-        credentialID, // Buffer -> goes into BYTEA
+        credentialID,
         credentialPublicKey.toString('base64'),
         counter,
         transports || [],
