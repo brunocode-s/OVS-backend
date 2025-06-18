@@ -224,9 +224,11 @@ export const verifyAuthentication = async (req, res) => {
       return res.status(400).json({ message: 'Invalid WebAuthn response structure' });
     }
 
+    // Convert rawId to buffer
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     console.log('✅ Converted rawId to buffer');
 
+    // Query for authenticator by credential_id (stored as Buffer)
     const authRow = await query(
       'SELECT * FROM authenticators WHERE credential_id = $1',
       [credentialIDBuffer]
@@ -242,13 +244,12 @@ export const verifyAuthentication = async (req, res) => {
       id: auth.id,
       counter: auth.counter,
       counterType: typeof auth.counter,
-      hasCounter: auth.counter !== null && auth.counter !== undefined
+      hasCounter: auth.counter !== null && auth.counter !== undefined,
+      publicKey: auth.public_key ? '(exists)' : '(missing)',
     });
 
-    // More robust counter handling
+    // Normalize counter value safely
     let counterValue = 0;
-    
-    // Check if counter exists and handle different data types
     if (auth.counter !== null && auth.counter !== undefined) {
       if (typeof auth.counter === 'string') {
         counterValue = parseInt(auth.counter, 10);
@@ -262,45 +263,40 @@ export const verifyAuthentication = async (req, res) => {
         counterValue = 0;
       }
     }
-
-    // Ensure counter is a valid number
     counterValue = Math.max(0, Math.floor(counterValue) || 0);
-    
     console.log('✅ Counter value determined:', counterValue);
 
+    // Decode stored public key (assumes Base64 text in DB)
     const publicKeyBuffer = Buffer.isBuffer(auth.public_key)
       ? auth.public_key
       : Buffer.from(auth.public_key, 'base64');
 
+    // Prepare authenticator device object expected by verifyAuthenticationResponse()
     const authenticatorDevice = {
       credentialID: credentialIDBuffer,
       credentialPublicKey: publicKeyBuffer,
-      counter: counterValue, // This should now always be a valid number
+      counter: counterValue,
       transports: Array.isArray(auth.transports) ? auth.transports : [],
     };
 
-    // Debug log the authenticator object
-    console.log('🔍 Authenticator device:', {
-      credentialID: authenticatorDevice.credentialID.length,
-      credentialPublicKey: authenticatorDevice.credentialPublicKey.length,
+    // Log final authenticator device object
+    console.log('👁 Final authenticatorDevice:', {
+      credentialIDLength: authenticatorDevice.credentialID.length,
+      publicKeyLength: authenticatorDevice.credentialPublicKey.length,
       counter: authenticatorDevice.counter,
       counterType: typeof authenticatorDevice.counter,
-      transports: authenticatorDevice.transports
+      transports: authenticatorDevice.transports,
     });
 
-    console.log('✅ Authenticator device prepared');
-
-    // Validate the authenticator object before passing it
+    // Safety checks before verification
     if (!authenticatorDevice.credentialID || !authenticatorDevice.credentialPublicKey) {
       throw new Error('Invalid authenticator device: missing credentialID or credentialPublicKey');
     }
-    
     if (typeof authenticatorDevice.counter !== 'number' || isNaN(authenticatorDevice.counter)) {
-      throw new Error(`Invalid authenticator counter: ${authenticatorDevice.counter} (type: ${typeof authenticatorDevice.counter})`);
+      throw new Error(`Invalid authenticator counter: ${authenticatorDevice.counter}`);
     }
 
-    console.log('🔍 Final authenticator validation passed');
-
+    // Perform verification using simplewebauthn
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
@@ -323,6 +319,7 @@ export const verifyAuthentication = async (req, res) => {
         );
       }
 
+      // Clear session challenge and save user ID in session
       req.session.challenge = null;
       req.session.challengeExpiresAt = null;
       req.session.rpID = null;
