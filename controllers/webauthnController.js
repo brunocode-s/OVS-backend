@@ -326,7 +326,7 @@ export const verifyAuthentication = async (req, res) => {
 
     // ✅ FETCH USER DATA - This was missing!
     const userResult = await query(
-      'SELECT id, email, role, first_name, last_name FROM users WHERE id = $1',
+      'SELECT id, email, role, firstname, lastname FROM users WHERE id = $1',
       [auth.user_id]
     );
 
@@ -362,8 +362,8 @@ export const verifyAuthentication = async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
-        firstName: user.first_name,
-        lastName: user.last_name,
+        firstName: user.firstname,
+        lastName: user.lastname,
       }
     });
   } else {
