@@ -173,6 +173,16 @@ export const verifyAuthentication = async (req, res) => {
     console.log('Expected Challenge:', expectedChallenge);
     console.log('Request rawId:', body.rawId);
     console.log('Session rpID:', rpID);
+    
+    // Log the entire request body structure
+    console.log('Full request body:', JSON.stringify(body, null, 2));
+    console.log('Body response structure:', {
+      id: body.id,
+      rawId: body.rawId,
+      type: body.type,
+      hasResponse: !!body.response,
+      responseKeys: body.response ? Object.keys(body.response) : 'no response'
+    });
 
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     console.log('Parsed Credential ID Buffer:', credentialIDBuffer.toString('hex'));
