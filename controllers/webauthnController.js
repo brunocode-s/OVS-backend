@@ -271,38 +271,40 @@ export const verifyAuthentication = async (req, res) => {
       ? auth.public_key
       : Buffer.from(auth.public_key, 'base64');
 
-    // Prepare authenticator device object expected by verifyAuthenticationResponse()
-    const authenticatorDevice = {
-      credentialID: credentialIDBuffer,
-      credentialPublicKey: publicKeyBuffer,
+    // Prepare credential object expected by verifyAuthenticationResponse()
+    // Note: Parameter name is 'credential', not 'authenticator'
+    const credential = {
+      id: body.rawId, // Use the raw credential ID from the response
+      publicKey: publicKeyBuffer,
       counter: counterValue,
       transports: Array.isArray(auth.transports) ? auth.transports : [],
     };
 
-    // Log final authenticator device object
-    console.log('👁 Final authenticatorDevice:', {
-      credentialIDLength: authenticatorDevice.credentialID.length,
-      publicKeyLength: authenticatorDevice.credentialPublicKey.length,
-      counter: authenticatorDevice.counter,
-      counterType: typeof authenticatorDevice.counter,
-      transports: authenticatorDevice.transports,
+    // Log final credential object
+    console.log('👁 Final credential:', {
+      id: credential.id,
+      publicKeyLength: credential.publicKey.length,
+      counter: credential.counter,
+      counterType: typeof credential.counter,
+      transports: credential.transports,
     });
 
     // Safety checks before verification
-    if (!authenticatorDevice.credentialID || !authenticatorDevice.credentialPublicKey) {
-      throw new Error('Invalid authenticator device: missing credentialID or credentialPublicKey');
+    if (!credential.id || !credential.publicKey) {
+      throw new Error('Invalid credential: missing id or publicKey');
     }
-    if (typeof authenticatorDevice.counter !== 'number' || isNaN(authenticatorDevice.counter)) {
-      throw new Error(`Invalid authenticator counter: ${authenticatorDevice.counter}`);
+    if (typeof credential.counter !== 'number' || isNaN(credential.counter)) {
+      throw new Error(`Invalid credential counter: ${credential.counter}`);
     }
 
     // Perform verification using simplewebauthn
+    // IMPORTANT: Parameter name is 'credential', not 'authenticator'
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
-      authenticator: authenticatorDevice,
+      credential: credential, // This is the correct parameter name
       requireUserVerification: true,
     });
 
