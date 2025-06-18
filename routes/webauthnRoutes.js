@@ -12,8 +12,9 @@ const router = express.Router();
 
 router.post('/generate-registration-options', authenticate, getRegistrationOptions);
 router.post('/verify-registration', authenticate, verifyRegistration);
-router.post('/generate-authentication-options', authenticate, getAuthenticationOptions);
-router.post('/verify-authentication', authenticate, verifyAuthentication);
 router.get('/check-registration', authenticate, checkFingerprintRegistration);
+
+router.post('/generate-authentication-options', getAuthenticationOptions);
+router.post('/verify-authentication', verifyAuthentication);
 
 export default router;

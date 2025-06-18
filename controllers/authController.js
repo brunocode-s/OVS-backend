@@ -184,100 +184,6 @@ const hasFingerprint = async (req, res) => {
   }
 };
 
-const startFingerprintRegister = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const result = await query('SELECT * FROM users WHERE id = $1', [userId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const user = result.rows[0];
-    await query('UPDATE users SET challenge = NULL WHERE id = $1', [userId]);
-
-    const registrationOptions = await fido2.attestationOptions({
-      user: {
-        id: Buffer.from(userId.toString()),
-        name: `${user.firstname} ${user.lastname}`,
-        displayName: `${user.firstname} ${user.lastname}`,
-      },
-      timeout: 60000,
-      rp: {
-        name: 'Online Voting System',
-        id: 'ovs-frontend-drab.vercel.app'
-      },
-      pubKeyCredParams: [
-        { type: 'public-key', alg: -7 },
-        { type: 'public-key', alg: -257 }
-      ],
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform',
-        userVerification: 'required'
-      },
-      attestation: 'none'
-    });
-
-    const formattedOptions = {
-      ...registrationOptions,
-      challenge: base64url.encode(registrationOptions.challenge),
-      user: {
-        ...registrationOptions.user,
-        id: base64url.encode(registrationOptions.user.id)
-      }
-    };
-
-    await query('UPDATE users SET challenge = $1 WHERE id = $2', [
-      registrationOptions.challenge.toString('base64'),
-      userId
-    ]);
-
-    res.json(formattedOptions);
-  } catch (err) {
-    console.error('Error during fingerprint register start:', err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-const verifyFingerprintRegister = async (req, res) => {
-  const { id, rawId, response, type } = req.body;
-
-  try {
-    const userId = req.user.id;
-
-    const result = await query('SELECT * FROM users WHERE id = $1', [userId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const user = result.rows[0];
-    const expected = {
-      challenge: Buffer.from(user.challenge, 'base64'),
-      origin: 'https://ovs-frontend-drab.vercel.app',
-      factor: 'either',
-      rpId: 'ovs-frontend-drab.vercel.app'
-    };
-
-    const attestationResult = await fido2.attestationResult(
-      { id, rawId, response, type },
-      expected
-    );
-
-    if (attestationResult.verified) {
-      await query(
-        `INSERT INTO authenticators (user_id, credential_id, public_key, counter)
-         VALUES ($1, $2, $3, $4)`,
-        [userId, base64url.encode(rawId), attestationResult.authnrData.get('credentialPublicKeyPem'), attestationResult.authnrData.get('counter')]
-      );      
-      res.status(200).json({ success: true });
-    } else {
-      res.status(400).json({ message: 'Fingerprint verification failed' });
-    }
-  } catch (err) {
-    console.error('Error during fingerprint verification:', err);
-    res.status(500).json({ message: err.message });
-  }
-};
 
 const startFingerprintLogin = async (req, res) => {
   try {
@@ -399,8 +305,6 @@ export {
   forgotPassword,
   resetPassword,
   hasFingerprint,
-  startFingerprintRegister,
-  verifyFingerprintRegister,
   startFingerprintLogin,
   verifyFingerprintLogin
 };
