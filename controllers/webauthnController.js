@@ -68,12 +68,16 @@ export const verifyRegistration = async (req, res) => {
   }
 
   try {
+    console.log('🔍 Starting registration verification...');
+    
     const verification = await verifyRegistrationResponse({
       response: body,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
     });
+
+    console.log('Registration verification result:', verification.verified);
 
     if (!verification.verified) {
       return res.status(400).json({ success: false });
@@ -88,17 +92,31 @@ export const verifyRegistration = async (req, res) => {
       },
     } = verification.registrationInfo;
 
+    // ✅ FIXED: Ensure we're storing the public key as base64 string
+    const publicKeyBase64 = credentialPublicKey.toString('base64');
+    const credentialIDBuffer = isoBase64URL.toBuffer(credentialID);
+
+    console.log('📝 Storing authenticator:', {
+      user_id: req.user.id,
+      credential_id_length: credentialIDBuffer.length,
+      public_key_base64_length: publicKeyBase64.length,
+      counter: counter,
+      transports: transports
+    });
+
     await query(
       `INSERT INTO authenticators (user_id, credential_id, public_key, counter, transports)
        VALUES ($1, $2, $3, $4, $5)`,
       [
         req.user.id,
-        isoBase64URL.toBuffer(credentialID), 
-        credentialPublicKey.toString('base64'),
-        counter,
+        credentialIDBuffer, 
+        publicKeyBase64, // ✅ Definitely base64 string
+        counter || 0, // ✅ Ensure counter has a default value
         transports || [],
       ]
     );
+
+    console.log('✅ Authenticator stored successfully');
 
     req.session.challenge = null;
     req.session.challengeExpiresAt = null;
@@ -107,7 +125,8 @@ export const verifyRegistration = async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Registration verification failed:', err);
-    res.status(500).json({ message: 'Verification failed' });
+    console.error('Full error details:', err);
+    res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 };
 
