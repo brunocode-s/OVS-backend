@@ -197,15 +197,17 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     // Validate response structure
-    if (!body.response?.authenticatorData || !body.response?.signature || !body.response?.clientDataJSON) {
+    if (
+      !body.response?.authenticatorData ||
+      !body.response?.signature ||
+      !body.response?.clientDataJSON
+    ) {
       return res.status(400).json({ message: 'Invalid WebAuthn response structure' });
     }
 
-    // Convert credential ID from rawId
     const credentialIDBuffer = isoBase64URL.toBuffer(body.rawId);
     console.log('✅ Converted rawId to buffer');
 
-    // Look up authenticator
     const authRow = await query(
       'SELECT * FROM authenticators WHERE credential_id = $1',
       [credentialIDBuffer]
@@ -217,14 +219,9 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     const auth = authRow.rows[0];
-    if (!auth) {
-      console.log('❌ No authenticator found after query');
-      return res.status(400).json({ message: 'Authenticator lookup failed' });
-    }
-    
     console.log('✅ Found authenticator');
 
-    // Handle counter
+    // Safe counter handling
     let counterValue = 0;
     if (auth.counter !== null && auth.counter !== undefined) {
       if (typeof auth.counter === 'string') counterValue = parseInt(auth.counter, 10) || 0;
@@ -232,12 +229,9 @@ export const verifyAuthentication = async (req, res) => {
       else if (typeof auth.counter === 'bigint') counterValue = Number(auth.counter);
     }
 
-    // Decode the stored public key (Base64 TEXT)
     const publicKeyBuffer = Buffer.isBuffer(auth.public_key)
-    ? auth.public_key
-    : Buffer.from(auth.public_key, 'base64');
-
-
+      ? auth.public_key
+      : Buffer.from(auth.public_key, 'base64');
 
     const authenticatorDevice = {
       credentialID: credentialIDBuffer,
@@ -248,7 +242,6 @@ export const verifyAuthentication = async (req, res) => {
 
     console.log('✅ Authenticator device prepared');
 
-    // Verify
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
@@ -261,19 +254,21 @@ export const verifyAuthentication = async (req, res) => {
     console.log('✅ Verification result:', verification.verified);
 
     if (verification.verified) {
-      const newCounter = verification.authenticationInfo?.newCounter ?? counterValue;
-    
-      await query(
-        'UPDATE authenticators SET counter = $1 WHERE id = $2',
-        [newCounter, auth.id]
-      );
-    
+      const newCounter = verification.authenticationInfo?.newCounter;
+
+      if (newCounter !== undefined) {
+        await query(
+          'UPDATE authenticators SET counter = $1 WHERE id = $2',
+          [newCounter, auth.id]
+        );
+      }
+
       req.session.challenge = null;
       req.session.challengeExpiresAt = null;
       req.session.rpID = null;
       req.session.userId = auth.user_id;
       await req.session.save();
-    
+
       return res.json({ success: true });
     } else {
       return res.status(400).json({ success: false });
@@ -286,6 +281,7 @@ export const verifyAuthentication = async (req, res) => {
     });
   }
 };
+
 
 // ========= CHECK =========
 
