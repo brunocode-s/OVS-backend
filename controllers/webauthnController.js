@@ -175,7 +175,6 @@ export const verifyAuthentication = async (req, res) => {
     console.log('Session rpID:', rpID);
     
     // Log the entire request body structure
-    // Critical debugging - check the response structure
     console.log('🔍 REQUEST BODY STRUCTURE:');
     console.log('- body.id:', body.id);
     console.log('- body.rawId:', body.rawId);
@@ -188,13 +187,12 @@ export const verifyAuthentication = async (req, res) => {
       console.log('- body.response.clientDataJSON:', body.response.clientDataJSON?.substring(0, 50) + '...');
       console.log('- body.response.userHandle:', body.response.userHandle);
       
-      // Check if these are valid base64url strings
       console.log('- authenticatorData length:', body.response.authenticatorData?.length);
       console.log('- signature length:', body.response.signature?.length);
       console.log('- clientDataJSON length:', body.response.clientDataJSON?.length);
     }
     
-    // Try to validate the response format before passing to library
+    // Validate response structure
     if (!body.response || !body.response.authenticatorData || !body.response.signature || !body.response.clientDataJSON) {
       console.log('❌ Invalid response structure - missing required fields');
       return res.status(400).json({ 
@@ -208,7 +206,6 @@ export const verifyAuthentication = async (req, res) => {
       });
     }
     
-    // Clean the body to remove extra fields that might confuse the library
     const cleanedBody = {
       id: body.id,
       rawId: body.rawId,
@@ -238,37 +235,66 @@ export const verifyAuthentication = async (req, res) => {
 
     const auth = authRow.rows[0];
 
-    // Add additional logging before verification
-    console.log('Auth object:', {
+    // ✅ FIXED: Better counter handling with explicit type checking
+    console.log('Raw auth counter value:', auth.counter, 'type:', typeof auth.counter);
+    
+    // Ensure counter is a valid number
+    let counterValue = 0;
+    if (auth.counter !== null && auth.counter !== undefined) {
+      const parsedCounter = parseInt(auth.counter, 10);
+      if (!isNaN(parsedCounter)) {
+        counterValue = parsedCounter;
+      }
+    }
+    
+    console.log('Processed counter value:', counterValue);
+
+    // Add detailed logging before creating authenticator device
+    console.log('Auth object details:', {
       id: auth.id,
       counter: auth.counter,
+      counterProcessed: counterValue,
       public_key_type: typeof auth.public_key,
-      public_key_preview: auth.public_key.substring(0, 50) + '...'
+      public_key_length: auth.public_key?.length,
+      credential_id_type: typeof auth.credential_id,
+      credential_id_is_buffer: Buffer.isBuffer(auth.credential_id)
     });
 
-    // Ensure all required properties are present and correctly typed
+    // ✅ FIXED: More robust authenticator device creation
     const authenticatorDevice = {
-      credentialID: auth.credential_id, // confirm it's Buffer
-      credentialPublicKey: Buffer.from(auth.public_key, 'base64'), // ✅ FIXED
-      counter: auth.counter ?? 0, // must be a number
-      transports: auth.transports || [] // optional
+      credentialID: Buffer.isBuffer(auth.credential_id) 
+        ? auth.credential_id 
+        : Buffer.from(auth.credential_id, 'hex'), // Handle string case
+      credentialPublicKey: Buffer.from(auth.public_key, 'base64'),
+      counter: counterValue, // Use processed counter value
+      transports: auth.transports || []
     };
     
+    // ✅ ADDED: Validate authenticator device before using it
+    if (!Buffer.isBuffer(authenticatorDevice.credentialID)) {
+      console.error('❌ credentialID is not a Buffer:', typeof authenticatorDevice.credentialID);
+      return res.status(500).json({ message: 'Invalid authenticator credential ID format' });
+    }
+    
+    if (!Buffer.isBuffer(authenticatorDevice.credentialPublicKey)) {
+      console.error('❌ credentialPublicKey is not a Buffer:', typeof authenticatorDevice.credentialPublicKey);
+      return res.status(500).json({ message: 'Invalid authenticator public key format' });
+    }
+    
+    if (typeof authenticatorDevice.counter !== 'number') {
+      console.error('❌ counter is not a number:', typeof authenticatorDevice.counter, authenticatorDevice.counter);
+      return res.status(500).json({ message: 'Invalid authenticator counter format' });
+    }
 
-    console.log('Authenticator device structure:', {
-      credentialID: authenticatorDevice.credentialID,
-      credentialIDType: typeof authenticatorDevice.credentialID,
+    console.log('✅ Authenticator device validation passed:', {
       credentialIDIsBuffer: Buffer.isBuffer(authenticatorDevice.credentialID),
-      credentialPublicKeyType: typeof authenticatorDevice.credentialPublicKey,
       credentialPublicKeyIsBuffer: Buffer.isBuffer(authenticatorDevice.credentialPublicKey),
       counter: authenticatorDevice.counter,
-      counterType: typeof authenticatorDevice.counter,
-      transports: authenticatorDevice.transports,
-      transportsType: typeof authenticatorDevice.transports
+      counterType: typeof authenticatorDevice.counter
     });
 
     const verification = await verifyAuthenticationResponse({
-      response: cleanedBody, // Use cleaned body instead of original body
+      response: cleanedBody,
       expectedChallenge,
       expectedOrigin: ORIGIN,
       expectedRPID: rpID,
@@ -284,7 +310,7 @@ export const verifyAuthentication = async (req, res) => {
     if (verification.verified && verification.authenticationInfo) {
       const newCounter = verification.authenticationInfo.newCounter ?? 0;
 
-      console.log('Updating counter from', auth.counter, 'to', newCounter);
+      console.log('Updating counter from', counterValue, 'to', newCounter);
 
       await query(
         'UPDATE authenticators SET counter = $1 WHERE id = $2',
@@ -314,6 +340,7 @@ export const verifyAuthentication = async (req, res) => {
   } catch (err) {
     console.error('Authentication verification failed:', err.message);
     console.error('Full error:', err);
+    console.error('Error stack:', err.stack);
     res.status(500).json({ message: 'Authentication failed', error: err.message });
   }
 };
