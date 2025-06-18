@@ -227,7 +227,8 @@ export const verifyAuthentication = async (req, res) => {
     }
 
     // Decode the stored public key (Base64 TEXT)
-    const publicKeyBuffer = Buffer.from(auth.public_key, 'base64');
+    const publicKeyBuffer = auth.public_key;
+
 
     const authenticatorDevice = {
       credentialID: new Uint8Array(credentialIDBuffer),
